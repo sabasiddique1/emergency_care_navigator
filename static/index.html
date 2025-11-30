@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EmergencyCareNavigator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+        }
+        .warning strong {
+            color: #856404;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .voice-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+        .voice-button:hover {
+            background: #5568d3;
+        }
+        .voice-button.recording {
+            background: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        button[type="submit"] {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        button[type="submit"]:hover {
+            background: #5568d3;
+        }
+        button[type="submit"]:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        .results {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            display: none;
+        }
+        .results.show {
+            display: block;
+        }
+        .triage-level {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .triage-level.emergency {
+            background: #fee;
+            color: #c33;
+            border-left: 4px solid #c33;
+        }
+        .triage-level.high {
+            background: #ffeaa7;
+            color: #d63031;
+            border-left: 4px solid #d63031;
+        }
+        .triage-level.medium {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        .triage-level.low {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+        .facility-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .facility-item h3 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .facility-item .meta {
+            color: #666;
+            font-size: 14px;
+        }
+        .handoff-packet {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .booking-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 8px;
+        }
+        .booking-section button {
+            background: #28a745;
+            margin-top: 10px;
+            width: auto;
+            padding: 10px 20px;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚑 EmergencyCareNavigator</h1>
+        <p class="subtitle">Multi-Agent Emergency Routing & Handoff Assistant</p>
+        
+        <div class="warning">
+            <strong>⚠️ Important:</strong> This is not a medical device and does not provide diagnoses. 
+            For emergencies, call local emergency services (911/ambulance) immediately.
+        </div>
+
+        <form id="intakeForm">
+            <div class="form-group">
+                <label for="name">Patient Name</label>
+                <input type="text" id="name" name="name" placeholder="Anonymous" />
+            </div>
+
+            <div class="form-group">
+                <label for="location">Current Location</label>
+                <input type="text" id="location" name="location" placeholder="City, Country" required />
+            </div>
+
+            <div class="form-group">
+                <label for="symptoms">Main Symptoms (comma-separated)</label>
+                <textarea id="symptoms" name="symptoms" placeholder="e.g., chest pain, difficulty breathing" required></textarea>
+                <button type="button" class="voice-button" id="voiceBtn" onclick="toggleVoiceInput()">
+                    🎤 Voice Input
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label>Red Flags (Check all that apply)</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="unconscious" name="unconscious" />
+                        <label for="unconscious">Unconscious / Not responding</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="breathing_difficulty" name="breathing_difficulty" />
+                        <label for="breathing_difficulty">Difficulty breathing</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="chest_pain" name="chest_pain" />
+                        <label for="chest_pain">Chest pain/pressure</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="stroke_signs" name="stroke_signs" />
+                        <label for="stroke_signs">Stroke signs (face droop/arm weakness/speech)</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="major_bleeding" name="major_bleeding" />
+                        <label for="major_bleeding">Major bleeding that won't stop</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="severe_allergy" name="severe_allergy" />
+                        <label for="severe_allergy">Severe allergy/anaphylaxis</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="injury_trauma" name="injury_trauma" />
+                        <label for="injury_trauma">Injury/trauma</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="pregnancy" name="pregnancy" />
+                        <label for="pregnancy">Pregnant</label>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" id="submitBtn">Get Recommendations</button>
+        </form>
+
+        <div id="loading" class="loading" style="display: none;">
+            Processing... Finding nearby facilities...
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="results" class="results">
+            <h2>Triage Result</h2>
+            <div id="triageLevel" class="triage-level"></div>
+            <div id="triageDetails"></div>
+
+            <h2 style="margin-top: 30px;">Top Facilities</h2>
+            <div id="facilities"></div>
+
+            <h2 style="margin-top: 30px;">Handoff Packet</h2>
+            <div id="handoffPacket" class="handoff-packet"></div>
+
+            <div id="bookingSection" class="booking-section" style="display: none;">
+                <h3>Booking Status</h3>
+                <p id="bookingStatus"></p>
+                <button id="approveBookingBtn" onclick="approveBooking()">Approve Booking</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let recognition = null;
+
+        // Initialize Web Speech API
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const symptomsInput = document.getElementById('symptoms');
+                symptomsInput.value = transcript;
+                toggleVoiceInput(); // Stop recording
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                toggleVoiceInput(); // Stop recording
+            };
+        }
+
+        function toggleVoiceInput() {
+            const btn = document.getElementById('voiceBtn');
+            if (!recognition) {
+                alert('Voice input not supported in your browser');
+                return;
+            }
+
+            if (recognition.isRunning) {
+                recognition.stop();
+                btn.classList.remove('recording');
+                btn.textContent = '🎤 Voice Input';
+            } else {
+                recognition.start();
+                btn.classList.add('recording');
+                btn.textContent = '🔴 Recording...';
+            }
+        }
+
+        document.getElementById('intakeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const symptoms = formData.get('symptoms').split(',').map(s => s.trim()).filter(s => s);
+            
+            const intake = {
+                name: formData.get('name') || 'Anonymous',
+                location_query: formData.get('location'),
+                symptoms: symptoms,
+                unconscious: formData.get('unconscious') === 'on',
+                breathing_difficulty: formData.get('breathing_difficulty') === 'on',
+                chest_pain: formData.get('chest_pain') === 'on',
+                stroke_signs: formData.get('stroke_signs') === 'on',
+                major_bleeding: formData.get('major_bleeding') === 'on',
+                severe_allergy: formData.get('severe_allergy') === 'on',
+                injury_trauma: formData.get('injury_trauma') === 'on',
+                pregnancy: formData.get('pregnancy') === 'on'
+            };
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('results').classList.remove('show');
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const response = await fetch('/api/intake', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(intake)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Request failed');
+                }
+
+                const result = await response.json();
+                currentSessionId = result.session_id || null;
+                
+                displayResults(result);
+            } catch (error) {
+                document.getElementById('error').textContent = `Error: ${error.message}`;
+                document.getElementById('error').style.display = 'block';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        function displayResults(result) {
+            const triage = result.triage;
+            const triageLevelDiv = document.getElementById('triageLevel');
+            triageLevelDiv.className = `triage-level ${triage.level}`;
+            triageLevelDiv.textContent = `Triage Level: ${triage.level.toUpperCase()}`;
+
+            document.getElementById('triageDetails').innerHTML = `
+                <p><strong>Reason:</strong> ${triage.reason}</p>
+                <p><strong>Recommended Action:</strong> ${triage.recommended_action}</p>
+                <p><strong>Safety Note:</strong> ${triage.safety_note}</p>
+            `;
+
+            const facilitiesDiv = document.getElementById('facilities');
+            facilitiesDiv.innerHTML = result.top_choices.map((f, i) => `
+                <div class="facility-item">
+                    <h3>${i + 1}. ${f.name}</h3>
+                    <div class="meta">
+                        Type: ${f.kind} | 
+                        Distance: ${f.distance_km} km | 
+                        ETA: ${f.eta_minutes ? f.eta_minutes + ' min' : 'unknown'}
+                    </div>
+                    <div style="color: #666; font-size: 14px; margin-top: 5px;">${f.address}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('handoffPacket').textContent = result.handoff_packet;
+
+            if (result.booking_status === 'pending_approval') {
+                document.getElementById('bookingSection').style.display = 'block';
+                document.getElementById('bookingStatus').textContent = result.booking?.note || 'Pending approval';
+            } else {
+                document.getElementById('bookingSection').style.display = 'none';
+            }
+
+            document.getElementById('results').classList.add('show');
+        }
+
+        async function approveBooking() {
+            if (!currentSessionId) {
+                alert('No active booking session');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/booking/approve/${currentSessionId}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Approval failed');
+
+                const booking = await response.json();
+                document.getElementById('bookingStatus').textContent = booking.note;
+                document.getElementById('approveBookingBtn').disabled = true;
+                document.getElementById('approveBookingBtn').textContent = '✓ Approved';
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
+

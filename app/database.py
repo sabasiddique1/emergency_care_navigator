@@ -1,0 +1,145 @@
+"""Database setup and connection."""
+from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime
+import os
+
+# Database file path
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./emergencycare.db")
+
+# Create engine
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
+
+# Create session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for models
+Base = declarative_base()
+
+
+# Database Models
+class UserModel(Base):
+    """User table for authentication."""
+    __tablename__ = "users"
+    
+    id = Column(String, primary_key=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False)  # "patient" or "hospital"
+    facility_name = Column(String, nullable=True)  # For hospital staff
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TriageSessionModel(Base):
+    """Triage session table - stores complete session data."""
+    __tablename__ = "triage_sessions"
+    
+    session_id = Column(String, primary_key=True)
+    patient_email = Column(String, index=True, nullable=True)
+    patient_name = Column(String, nullable=True)
+    
+    # Intake data (stored as JSON)
+    intake_data = Column(JSON, nullable=True)
+    
+    # Triage result
+    triage_level = Column(String, nullable=True)
+    triage_reason = Column(Text, nullable=True)
+    triage_action = Column(Text, nullable=True)
+    triage_safety_note = Column(Text, nullable=True)
+    
+    # Location
+    location_query = Column(String, nullable=True)
+    location_lat = Column(Float, nullable=True)
+    location_lon = Column(Float, nullable=True)
+    
+    # Recommendation data (stored as JSON)
+    recommendation_data = Column(JSON, nullable=True)
+    
+    # Booking state
+    request_type = Column(String, nullable=True)  # "alert" or "appointment"
+    booking_status = Column(String, nullable=True)
+    facility_name = Column(String, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    bookings = relationship("BookingModel", back_populates="session", cascade="all, delete-orphan")
+
+
+class BookingModel(Base):
+    """Booking/Request table - stores hospital bookings and patient requests."""
+    __tablename__ = "bookings"
+    
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("triage_sessions.session_id"), index=True, nullable=False)
+    
+    # Patient info
+    patient_email = Column(String, index=True, nullable=True)
+    patient_name = Column(String, nullable=False)
+    
+    # Facility info
+    facility_name = Column(String, index=True, nullable=False)
+    
+    # Triage info
+    triage_level = Column(String, nullable=False)
+    request_type = Column(String, nullable=False)  # "alert" or "appointment"
+    
+    # Status
+    status = Column(String, nullable=False)  # PENDING_ACK, ACKNOWLEDGED, PENDING_APPROVAL, CONFIRMED, REJECTED
+    
+    # Handoff packet
+    handoff_packet = Column(Text, nullable=True)
+    
+    # ETA and location
+    eta_minutes = Column(Integer, nullable=True)
+    location = Column(String, nullable=True)
+    
+    # Symptoms (stored as JSON array)
+    symptoms = Column(JSON, nullable=True)
+    
+    # Timestamps
+    requested_at = Column(DateTime, default=datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # Relationship
+    session = relationship("TriageSessionModel", back_populates="bookings")
+
+
+class MemoryModel(Base):
+    """Memory/preferences table - stores user preferences."""
+    __tablename__ = "memory"
+    
+    id = Column(String, primary_key=True)
+    user_email = Column(String, unique=True, index=True, nullable=True)  # null = global/default
+    preferred_city = Column(String, nullable=True)
+    last_facility_used = Column(String, nullable=True)
+    health_conditions = Column(JSON, nullable=True)  # Array of strings
+    theme = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# Create all tables
+def init_db():
+    """Initialize database - create all tables."""
+    Base.metadata.create_all(bind=engine)
+
+
+# Dependency to get database session
+def get_db():
+    """Get database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+

@@ -24,3 +24,4 @@ def save_memory(mem: MemoryBank) -> None:
     with open(MEM_PATH, "w", encoding="utf-8") as f:
         json.dump(mem.model_dump(), f, indent=2)
 
+

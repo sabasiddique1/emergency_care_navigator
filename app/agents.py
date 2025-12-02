@@ -27,7 +27,7 @@ class TriageAgent:
         if any(red_flags):
             level = "emergency"
             reason = "One or more red-flag symptoms present (airway/breathing/circulation/neurologic risk)."
-            action = "🚨 CALL EMERGENCY SERVICES (911/ambulance) NOW. Do not delay. Prefer ambulance/ER."
+            action = "CALL EMERGENCY SERVICES (911/ambulance) NOW. Do not delay. Prefer ambulance/ER."
         elif intake.injury_trauma:
             level = "high"
             reason = "Trauma/injury reported without immediate red flags."
@@ -116,6 +116,9 @@ class CoordinatorAgent:
     """Orchestrates the workflow."""
     def __init__(self):
         self.booking = BookingState()
+        self.intake: Optional[IntakeAnswers] = None
+        self.triage: Optional[TriageResult] = None
+        self.recommendation: Optional[Recommendation] = None
 
     def build_handoff_packet(
         self, intake: IntakeAnswers, triage: TriageResult, chosen: Facility, eta: Optional[int]
@@ -136,6 +139,7 @@ class CoordinatorAgent:
 
     def run(self, intake: IntakeAnswers) -> Recommendation:
         log_event("coordinator_start", intake=intake.model_dump())
+        self.intake = intake  # Store intake data for later retrieval
 
         # Geocode
         try:
@@ -147,6 +151,7 @@ class CoordinatorAgent:
 
         # Triage
         triage = TriageAgent().run(intake)
+        self.triage = triage  # Store triage result
 
         # Find facilities
         facilities = FacilityFinderAgent().run(lat, lon, triage.level)
@@ -165,14 +170,25 @@ class CoordinatorAgent:
         # Handoff packet
         handoff = self.build_handoff_packet(intake, triage, chosen, eta)
 
-        # Booking
-        booking_status = "skipped"
+        # Create hospital request based on triage level
+        # Two modes: Emergency/High -> Pre-Arrival Alert, Medium/Low -> Appointment Booking
+        self.booking.facility_name = chosen.name
+        self.booking.requested_at = now_iso()
+        self.booking.patient_name = intake.name
+        self.booking.triage_level = triage.level
+        
         if triage.level in ("emergency", "high"):
-            self.booking.status = "pending_approval"
-            self.booking.facility_name = chosen.name
-            self.booking.requested_at = now_iso()
-            self.booking.note = "Simulated booking request created. Requires human approval to continue."
-            booking_status = self.booking.status
+            # Emergency Mode: Pre-Arrival Alert
+            self.booking.request_type = "alert"
+            self.booking.status = "PENDING_ACK"
+            self.booking.note = "Pre-arrival alert created. Hospital must acknowledge to confirm readiness."
+            booking_status = "PENDING_ACK"
+        else:
+            # Non-Emergency Mode: Appointment Booking Request
+            self.booking.request_type = "appointment"
+            self.booking.status = "PENDING_APPROVAL"
+            self.booking.note = "Appointment booking request created. Hospital must approve to confirm appointment."
+            booking_status = "PENDING_APPROVAL"
 
         # Update memory
         mem = load_memory()
@@ -182,23 +198,70 @@ class CoordinatorAgent:
 
         log_event("coordinator_done", chosen=chosen.model_dump(), booking=self.booking.model_dump(), metrics=METRICS)
 
-        return Recommendation(
+        recommendation = Recommendation(
             triage=triage,
             top_choices=facilities,
             route_notes=route_notes,
             handoff_packet=handoff,
             booking_status=booking_status,
-            booking=self.booking if booking_status != "skipped" else None
+            booking=self.booking
         )
+        self.recommendation = recommendation  # Store recommendation
+        return recommendation
 
-    def approve_booking(self) -> BookingState:
-        """Approve pending booking."""
-        if self.booking.status != "pending_approval":
-            self.booking.note = f"Cannot approve from status={self.booking.status}"
-            return self.booking
-        self.booking.status = "confirmed"
-        self.booking.approved_at = now_iso()
-        self.booking.note = "Simulated booking confirmed."
-        log_event("booking_approved", booking=self.booking.model_dump())
+    def ack_alert(self) -> BookingState:
+        """
+        Acknowledge a pre-arrival alert (Emergency/High cases).
+        Sets status to ACKNOWLEDGED.
+        """
+        if self.booking.request_type != "alert":
+            raise ValueError(f"Cannot acknowledge: request type is '{self.booking.request_type}', expected 'alert'")
+        if self.booking.status != "PENDING_ACK":
+            raise ValueError(f"Cannot acknowledge: status is '{self.booking.status}', expected 'PENDING_ACK'")
+        
+        self.booking.status = "ACKNOWLEDGED"
+        self.booking.acknowledged_at = now_iso()
+        self.booking.note = "Pre-arrival alert acknowledged. Hospital is ready to receive patient."
+        log_event("alert_acknowledged", booking=self.booking.model_dump())
         return self.booking
+
+    def approve_appointment(self) -> BookingState:
+        """
+        Approve an appointment booking request (Medium/Low cases).
+        Sets status to CONFIRMED.
+        """
+        if self.booking.request_type != "appointment":
+            raise ValueError(f"Cannot approve appointment: request type is '{self.booking.request_type}', expected 'appointment'")
+        if self.booking.status != "PENDING_APPROVAL":
+            raise ValueError(f"Cannot approve: status is '{self.booking.status}', expected 'PENDING_APPROVAL'")
+        
+        self.booking.status = "CONFIRMED"
+        self.booking.approved_at = now_iso()
+        self.booking.note = "Appointment booking confirmed."
+        log_event("appointment_approved", booking=self.booking.model_dump())
+        return self.booking
+
+    def reject_request(self, reason: Optional[str] = None) -> BookingState:
+        """
+        Reject any request (alert or appointment).
+        Sets status to REJECTED.
+        """
+        if self.booking.status not in ("PENDING_ACK", "PENDING_APPROVAL"):
+            raise ValueError(f"Cannot reject: status is '{self.booking.status}', expected PENDING_ACK or PENDING_APPROVAL")
+        
+        self.booking.status = "REJECTED"
+        self.booking.note = reason or f"Request rejected by hospital."
+        log_event("request_rejected", booking=self.booking.model_dump(), reason=reason)
+        return self.booking
+
+    # Backward compatibility method (deprecated, use ack_alert or approve_appointment)
+    def approve_booking(self) -> BookingState:
+        """Deprecated: Use ack_alert() or approve_appointment() instead."""
+        if self.booking.request_type == "alert":
+            return self.ack_alert()
+        elif self.booking.request_type == "appointment":
+            return self.approve_appointment()
+        else:
+            raise ValueError(f"Unknown request type: {self.booking.request_type}")
+
 

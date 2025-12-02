@@ -45,3 +45,4 @@ def get_llm_client() -> LLMClient:
         log_event("llm_ready", provider="mock")
         return MockLLM()
 
+

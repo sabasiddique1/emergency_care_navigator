@@ -19,3 +19,4 @@ def log_event(event: str, **fields: Any) -> Dict[str, Any]:
     print(f"[LOG] {payload}")  # Simple print for now
     return payload
 
+

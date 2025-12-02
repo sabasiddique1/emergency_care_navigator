@@ -41,3 +41,7 @@ dist/
 build/
 *.egg-info/
 
+# Documentation
+docs/
+
+

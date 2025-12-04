@@ -4,9 +4,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import os
+import uuid
 
 # Database file path
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./emergencycare.db")
+# For Vercel/serverless: use /tmp directory for SQLite
+if os.getenv("VERCEL"):
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/emergencycare.db")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./emergencycare.db")
 
 # Create engine
 engine = create_engine(
@@ -113,6 +118,24 @@ class BookingModel(Base):
     
     # Relationship
     session = relationship("TriageSessionModel", back_populates="bookings")
+
+
+class NotificationModel(Base):
+    """Notifications table - stores notifications for users."""
+    __tablename__ = "notifications"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_email = Column(String, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String, nullable=False)  # "booking_approved", "booking_rejected", "new_request", etc.
+    related_session_id = Column(String, nullable=True)
+    related_booking_id = Column(String, nullable=True)
+    read = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # JSON field for additional data
+    metadata = Column(JSON, nullable=True)
 
 
 class MemoryModel(Base):

@@ -25,7 +25,8 @@ from app.db_service import (
     get_booking_by_session_id, get_bookings_by_facility, get_patient_bookings,
     get_pending_bookings_count, get_requested_hospitals, get_session_by_id,
     get_patient_sessions, booking_to_dict, get_memory, save_memory,
-    _parse_iso_datetime
+    _parse_iso_datetime, create_notification, get_notifications, get_unread_count,
+    mark_notification_read, mark_all_notifications_read, get_hospital_staff_emails
 )
 
 app = FastAPI(title="EmergencyCareNavigator API")
@@ -194,6 +195,26 @@ async def process_intake(intake: IntakeAnswers, patient_email: Optional[str] = Q
             if patient_key not in patient_requests:
                 patient_requests[patient_key] = []
             patient_requests[patient_key].append(booking_data)
+            
+            # Create notification for hospital staff
+            if facility_name:
+                staff_emails = get_hospital_staff_emails(facility_name)
+                request_type_text = "pre-arrival alert" if coordinator.booking.request_type == "alert" else "appointment request"
+                for staff_email in staff_emails:
+                    create_notification(
+                        user_email=staff_email,
+                        title=f"New {request_type_text.title()}",
+                        message=f"{intake.name or 'Anonymous'} has submitted a {request_type_text} ({result.triage.level} priority). Action required.",
+                        notification_type="new_booking_request",
+                        related_session_id=session_id,
+                        related_booking_id=booking_data.get("id"),
+                        metadata={
+                            "facility_name": facility_name,
+                            "patient_name": intake.name,
+                            "triage_level": result.triage.level,
+                            "request_type": coordinator.booking.request_type
+                        }
+                    )
         
         return result_dict
     except HTTPException:
@@ -221,6 +242,24 @@ async def ack_alert(session_id: str) -> BookingState:
         status=booking.status,
         acknowledged_at=_parse_iso_datetime(booking.acknowledged_at) if booking.acknowledged_at else datetime.utcnow()
     )
+    
+    # Get patient email from session
+    session_model = get_session_by_id(session_id)
+    patient_email = session_model.patient_email if session_model else None
+    
+    # Create notification for patient
+    if patient_email:
+        create_notification(
+            user_email=patient_email,
+            title="Alert Acknowledged",
+            message=f"Your pre-arrival alert to {booking.facility_name or 'the hospital'} has been acknowledged. The hospital is ready to receive you.",
+            notification_type="alert_acknowledged",
+            related_session_id=session_id,
+            metadata={
+                "facility_name": booking.facility_name,
+                "status": booking.status
+            }
+        )
     
     # Keep in-memory update for backward compatibility
     if booking.facility_name and booking.facility_name in hospital_bookings:
@@ -284,6 +323,25 @@ async def approve_appointment(session_id: str) -> BookingState:
         status=booking.status,
         approved_at=approved_at_dt
     )
+    
+    # Get patient email from session
+    session_model = get_session_by_id(session_id)
+    patient_email = session_model.patient_email if session_model else None
+    
+    # Create notification for patient
+    if patient_email:
+        create_notification(
+            user_email=patient_email,
+            title="Request Approved",
+            message=f"Your {booking.request_type} request to {booking.facility_name or 'the hospital'} has been approved.",
+            notification_type="booking_approved",
+            related_session_id=session_id,
+            metadata={
+                "facility_name": booking.facility_name,
+                "request_type": booking.request_type,
+                "status": booking.status
+            }
+        )
     
     # Update hospital_bookings and patient_requests (in-memory for backward compatibility)
     if booking.facility_name and booking.facility_name in hospital_bookings:
@@ -452,6 +510,25 @@ async def reject_request(session_id: str, request_data: Dict[str, Any] = Body(de
         rejection_reason=reason or "Request rejected by hospital"
     )
     
+    # Get patient email from session
+    session_model = get_session_by_id(session_id)
+    patient_email = session_model.patient_email if session_model else None
+    
+    # Create notification for patient
+    if patient_email:
+        create_notification(
+            user_email=patient_email,
+            title="Request Rejected",
+            message=f"Your {coordinator.booking.request_type} request to {coordinator.booking.facility_name or 'the hospital'} has been rejected. {reason or 'Please try another facility.'}",
+            notification_type="booking_rejected",
+            related_session_id=session_id,
+            metadata={
+                "facility_name": coordinator.booking.facility_name,
+                "request_type": coordinator.booking.request_type,
+                "rejection_reason": reason
+            }
+        )
+    
     # Update hospital_bookings and patient_requests (in-memory for backward compatibility)
     rejected_at = datetime.now().isoformat()
     booking_found = False
@@ -577,6 +654,142 @@ async def get_hospitals_with_bookings_legacy() -> List[Dict[str, Any]]:
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "service": "EmergencyCareNavigator"}
+
+
+# Notification endpoints
+@app.get("/api/notifications")
+async def get_notifications_endpoint(
+    unread_only: bool = Query(False),
+    limit: Optional[int] = Query(None),
+    authorization: Optional[str] = Header(None)
+) -> List[Dict[str, Any]]:
+    """Get notifications for the current user."""
+    user_email = None
+    
+    # Extract user email from auth token
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            token = authorization.replace("Bearer ", "")
+            payload = verify_token(token)
+            if payload:
+                email = payload.get("sub")
+                if email:
+                    user = get_user_by_email(email)
+                    if user:
+                        user_email = user.email
+        except Exception:
+            pass
+    
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    notifications = get_notifications(user_email, unread_only=unread_only, limit=limit)
+    return [
+        {
+            "id": n.id,
+            "user_email": n.user_email,
+            "title": n.title,
+            "message": n.message,
+            "type": n.type,
+            "related_session_id": n.related_session_id,
+            "related_booking_id": n.related_booking_id,
+            "read": n.read,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+            "metadata": n.metadata
+        }
+        for n in notifications
+    ]
+
+
+@app.get("/api/notifications/unread-count")
+async def get_unread_count_endpoint(
+    authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Get count of unread notifications for the current user."""
+    user_email = None
+    
+    # Extract user email from auth token
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            token = authorization.replace("Bearer ", "")
+            payload = verify_token(token)
+            if payload:
+                email = payload.get("sub")
+                if email:
+                    user = get_user_by_email(email)
+                    if user:
+                        user_email = user.email
+        except Exception:
+            pass
+    
+    if not user_email:
+        return {"count": 0}
+    
+    count = get_unread_count(user_email)
+    return {"count": count}
+
+
+@app.post("/api/notifications/{notification_id}/read")
+async def mark_notification_read_endpoint(
+    notification_id: str,
+    authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Mark a notification as read."""
+    user_email = None
+    
+    # Extract user email from auth token
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            token = authorization.replace("Bearer ", "")
+            payload = verify_token(token)
+            if payload:
+                email = payload.get("sub")
+                if email:
+                    user = get_user_by_email(email)
+                    if user:
+                        user_email = user.email
+        except Exception:
+            pass
+    
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    notification = mark_notification_read(notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    if notification.user_email != user_email:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return {"status": "success", "notification_id": notification_id}
+
+
+@app.post("/api/notifications/read-all")
+async def mark_all_notifications_read_endpoint(
+    authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
+    """Mark all notifications as read for the current user."""
+    user_email = None
+    
+    # Extract user email from auth token
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            token = authorization.replace("Bearer ", "")
+            payload = verify_token(token)
+            if payload:
+                email = payload.get("sub")
+                if email:
+                    user = get_user_by_email(email)
+                    if user:
+                        user_email = user.email
+        except Exception:
+            pass
+    
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    count = mark_all_notifications_read(user_email)
+    return {"status": "success", "marked_read": count}
 
 
 @app.get("/api/memory")
@@ -926,11 +1139,9 @@ async def get_hospital_bookings_protected(
     if current_user.facility_name and current_user.facility_name != facility_name:
         raise HTTPException(status_code=403, detail="Access denied to this facility")
     
-    bookings = hospital_bookings.get(facility_name, [])
-    if status:
-        bookings = [b for b in bookings if b["status"] == status]
-    bookings.sort(key=lambda x: x.get("requested_at", ""), reverse=True)
-    return bookings
+    # Get from database for real-time data
+    bookings = get_bookings_by_facility(facility_name, status)
+    return [booking_to_dict(b) for b in bookings]
 
 
 @app.get("/api/hospital/facilities")
@@ -938,21 +1149,45 @@ async def get_hospitals_with_bookings_protected(
     current_user: User = Depends(require_role("hospital_staff"))
 ) -> List[Dict[str, Any]]:
     """Get list of all facilities that have bookings (protected)."""
-    facilities = []
-    for facility_name, bookings in hospital_bookings.items():
-        # Filter by user's facility if they have one
-        if current_user.facility_name and current_user.facility_name != facility_name:
-            continue
+    # Get from database for real-time data
+    from sqlalchemy import func, case
+    from app.database import BookingModel, SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Build query
+        query = db.query(
+            BookingModel.facility_name,
+            func.count(BookingModel.id).label('total'),
+            func.sum(case(
+                (BookingModel.status.in_(["PENDING_ACK", "PENDING_APPROVAL", "pending_approval"]), 1),
+                else_=0
+            )).label('pending')
+        ).group_by(BookingModel.facility_name)
         
-        pending_count = sum(1 for b in bookings if b["status"] == "pending_approval")
-        total_count = len(bookings)
-        facilities.append({
-            "name": facility_name,
-            "pending_bookings": pending_count,
-            "total_bookings": total_count
-        })
-    facilities.sort(key=lambda x: x["pending_bookings"], reverse=True)
-    return facilities
+        # Filter by user's facility if they have one
+        if current_user.facility_name:
+            query = query.filter(BookingModel.facility_name == current_user.facility_name)
+        
+        facilities_query = query.all()
+        
+        facilities = []
+        for facility_name, total, pending in facilities_query:
+            if facility_name:
+                facilities.append({
+                    "name": facility_name,
+                    "pending_bookings": int(pending or 0),
+                    "total_bookings": int(total or 0)
+                })
+        
+        facilities.sort(key=lambda x: x["pending_bookings"], reverse=True)
+        return facilities
+    except Exception as e:
+        log_event("database_error", error=str(e), endpoint="hospital/facilities")
+        # Fallback to empty list
+        return []
+    finally:
+        db.close()
 
 
 @app.post("/api/booking/approve/{session_id}")

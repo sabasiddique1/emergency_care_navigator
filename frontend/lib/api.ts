@@ -34,7 +34,7 @@ export interface Facility {
 
 export interface BookingState {
   request_type?: 'alert' | 'appointment';
-  status: 'not_started' | 'PENDING_ACK' | 'ACKNOWLEDGED' | 'PENDING_APPROVAL' | 'CONFIRMED' | 'REJECTED' | 'pending_approval' | 'confirmed' | 'failed' | 'skipped';
+  status: 'not_started' | 'PENDING_ACK' | 'ACKNOWLEDGED' | 'PENDING_APPROVAL' | 'CONFIRMED' | 'REJECTED' | 'pending_approval' | 'confirmed' | 'rejected' | 'failed' | 'skipped';
   facility_name?: string;
   requested_at?: string;
   approved_at?: string;
@@ -544,7 +544,8 @@ export interface HospitalBooking {
   facility_name: string;
   patient_name: string;
   triage_level: string;
-  status: 'pending_approval' | 'confirmed' | 'rejected';
+  request_type?: 'alert' | 'appointment';
+  status: 'pending_approval' | 'confirmed' | 'rejected' | 'PENDING_ACK' | 'ACKNOWLEDGED' | 'PENDING_APPROVAL' | 'CONFIRMED' | 'REJECTED';
   requested_at: string;
   approved_at?: string;
   rejected_at?: string;

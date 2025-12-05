@@ -1,52 +1,110 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { AppShell } from "@/components/layout/app-shell"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Activity, AlertTriangle, Clock, MapPin, ArrowRight } from "lucide-react"
+import { Activity, AlertTriangle, Clock, MapPin, ArrowRight, Loader2, RefreshCw, Building2 } from "lucide-react"
 import Link from "next/link"
-
-// Mock data
-const stats = {
-  sessionsToday: 12,
-  emergencyCases: 3,
-  averageETA: 15,
-  activeTriages: 2,
-}
-
-const recentSessions = [
-  {
-    id: "1",
-    patient: "John Doe",
-    location: "Karachi, Pakistan",
-    triageLevel: "emergency" as const,
-    timestamp: "2 hours ago",
-    facility: "Aga Khan Hospital",
-  },
-  {
-    id: "2",
-    patient: "Anonymous",
-    location: "Lahore, Pakistan",
-    triageLevel: "high" as const,
-    timestamp: "4 hours ago",
-    facility: "Shaukat Khanum",
-  },
-  {
-    id: "3",
-    patient: "Jane Smith",
-    location: "Islamabad, Pakistan",
-    triageLevel: "medium" as const,
-    timestamp: "6 hours ago",
-    facility: "PIMS",
-  },
-]
+import { getPatientSessions, PatientSession } from "@/lib/api"
+import { useAuth } from "@/contexts/auth-context"
+import { useToast } from "@/hooks/use-toast"
 
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [sessions, setSessions] = useState<PatientSession[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [stats, setStats] = useState({
+    sessionsToday: 0,
+    emergencyCases: 0,
+    averageETA: 0,
+    activeTriages: 0,
+  })
+
+  useEffect(() => {
+    loadRecentActivity()
+  }, [user])
+
+  const loadRecentActivity = async () => {
+    if (!user?.email) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      const data = await getPatientSessions(user.email)
+      setSessions(data)
+
+      // Calculate stats
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const todaySessions = data.filter(s => {
+        if (!s.requested_at) return false
+        const sessionDate = new Date(s.requested_at)
+        return sessionDate >= today
+      })
+
+      const emergencyCases = data.filter(s => s.triage_level === "emergency").length
+      const activeTriages = data.filter(s => 
+        s.status === "PENDING_ACK" || s.status === "PENDING_APPROVAL" || s.status === "pending_approval"
+      ).length
+
+      setStats({
+        sessionsToday: todaySessions.length,
+        emergencyCases,
+        averageETA: 15, // This would need to be calculated from actual ETA data
+        activeTriages,
+      })
+    } catch (error) {
+      console.error("Failed to load recent activity:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load recent activity",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const formatTimeAgo = (dateString?: string) => {
+    if (!dateString) return "Unknown"
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMins / 60)
+    const diffDays = Math.floor(diffHours / 24)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`
+    return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`
+  }
+
+  const getTriageBadgeVariant = (level?: string) => {
+    switch (level) {
+      case "emergency":
+        return "destructive"
+      case "high":
+        return "default"
+      case "medium":
+        return "secondary"
+      case "low":
+        return "outline"
+      default:
+        return "outline"
+    }
+  }
+
+  const recentSessions = sessions.slice(0, 5) // Show latest 5
   return (
-    <ProtectedRoute>
-      <AppShell>
+    <AppShell>
       <div className="space-y-6">
         {/* Hero Section */}
         <div className="space-y-2">
@@ -125,59 +183,79 @@ export default function DashboardPage() {
 
         {/* Recent Activity */}
         <div>
-          <h2 className="text-2xl font-semibold mb-4">Recent Activity</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-semibold">Recent Activity</h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadRecentActivity}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>Recent Triage Sessions</CardTitle>
               <CardDescription>Latest emergency care assessments</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{session.patient}</span>
-                        <Badge
-                          variant={
-                            session.triageLevel === "emergency"
-                              ? "emergency"
-                              : session.triageLevel === "high"
-                              ? "warning"
-                              : "default"
-                          }
-                        >
-                          {session.triageLevel.toUpperCase()}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {session.location}
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : recentSessions.length > 0 ? (
+                <div className="space-y-4">
+                  {recentSessions.map((session) => (
+                    <div
+                      key={session.session_id}
+                      className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
+                    >
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{session.patient_name || "Anonymous"}</span>
+                          <Badge variant={getTriageBadgeVariant(session.triage_level)}>
+                            {session.triage_level?.toUpperCase() || "UNKNOWN"}
+                          </Badge>
+                          {session.status && (
+                            <Badge variant="outline" className="text-xs">
+                              {session.status}
+                            </Badge>
+                          )}
                         </div>
-                        <div>{session.timestamp}</div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {session.location || "Unknown location"}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {session.facility_name || "Unknown facility"}
+                          </div>
+                          <div>{formatTimeAgo(session.requested_at)}</div>
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        Facility: {session.facility}
-                      </div>
+                      <Link href={`/sessions?session=${session.session_id}`}>
+                        <Button variant="outline" size="sm">
+                          View
+                        </Button>
+                      </Link>
                     </div>
-                    <Link href={`/triage?session=${session.id}`}>
-                      <Button variant="outline" size="sm">
-                        View
-                      </Button>
-                    </Link>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No recent activity</p>
+                  <p className="text-sm mt-1">Start a new triage to see activity here</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
       </div>
     </AppShell>
-    </ProtectedRoute>
   )
 }
 

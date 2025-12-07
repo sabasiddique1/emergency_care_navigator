@@ -16,7 +16,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ currentLocation, triageStatus }: AppHeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false)
-  const { user } = useAuth()
+  const { user, logout, isAuthenticated } = useAuth()
 
   // Keyboard shortcut: Ctrl+K or Cmd+K to open search
   useEffect(() => {
@@ -80,17 +80,17 @@ export function AppHeader({ currentLocation, triageStatus }: AppHeaderProps) {
           </Button>
 
           {/* Notifications - Only show if logged in */}
-          {user && <NotificationsDropdown />}
+          {isAuthenticated && <NotificationsDropdown />}
 
           {/* Login/Signup buttons - Show if not logged in */}
-          {!user ? (
+          {!isAuthenticated ? (
             <>
               <Link href="/login">
                 <Button variant="ghost" size="sm">
                   Login
                 </Button>
               </Link>
-              <Link href="/login">
+              <Link href="/login?register=true">
                 <Button size="sm">
                   Sign Up
                 </Button>
@@ -111,6 +111,11 @@ export function AppHeader({ currentLocation, triageStatus }: AppHeaderProps) {
                   <User className="h-5 w-5" />
                 </Button>
               </Link>
+
+              {/* Logout Button */}
+              <Button variant="ghost" size="sm" onClick={logout} title="Logout">
+                Logout
+              </Button>
             </>
           )}
         </div>

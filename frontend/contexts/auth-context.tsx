@@ -58,12 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: 'success',
       });
       
-      // Navigate based on role
-      if (response.user.role === 'hospital_staff') {
-        router.push('/hospital');
-      } else {
-        router.push('/triage');
-      }
+      // Navigate to dashboard after login
+      router.push('/');
     } catch (error) {
       toast({
         title: 'Login Failed',
@@ -84,12 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: 'success',
       });
       
-      // Navigate based on role
-      if (response.user.role === 'hospital_staff') {
-        router.push('/hospital');
-      } else {
-        router.push('/triage');
-      }
+      // Navigate to dashboard after registration
+      router.push('/');
     } catch (error) {
       toast({
         title: 'Registration Failed',
@@ -103,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     apiLogout();
     setUser(null);
-    router.push('/login');
+    router.push('/');
     toast({
       title: 'Logged Out',
       description: 'You have been logged out successfully',
@@ -136,4 +128,5 @@ export function useAuth() {
   }
   return context;
 }
+
 

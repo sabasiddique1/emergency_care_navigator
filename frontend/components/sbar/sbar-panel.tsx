@@ -115,3 +115,4 @@ export function SBARPanel({ open, onOpenChange, handoffPacket }: SBARPanelProps)
   )
 }
 
+

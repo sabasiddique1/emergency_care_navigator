@@ -22,5 +22,13 @@
     "role": "hospital_staff",
     "facility_name": "Jinnah Hospital",
     "password_hash": "10176e7b7b24d317acfcf8d2064cfd2f24e154f7b5a96603077d5ef813d6a6b6"
+  },
+  "timhorton@gmail.com": {
+    "id": "NYWS02BETKQssil9QVI_Vg",
+    "email": "timhorton@gmail.com",
+    "name": "Tim Horton",
+    "role": "patient",
+    "facility_name": null,
+    "password_hash": "c974e631f72d24aee831f44181e4796d213658d69d6590ddc2fe6d9e4321648c"
   }
 }

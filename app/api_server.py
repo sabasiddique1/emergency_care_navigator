@@ -695,7 +695,7 @@ async def get_notifications_endpoint(
             "related_booking_id": n.related_booking_id,
             "read": n.read,
             "created_at": n.created_at.isoformat() if n.created_at else None,
-            "metadata": n.metadata
+            "metadata": n.extra_data
         }
         for n in notifications
     ]

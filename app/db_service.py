@@ -1,7 +1,7 @@
 """Database service layer for CRUD operations."""
 from sqlalchemy.orm import Session
 from app.database import (
-    TriageSessionModel, BookingModel, MemoryModel, UserModel,
+    TriageSessionModel, BookingModel, MemoryModel, UserModel, NotificationModel,
     SessionLocal
 )
 from app.models import IntakeAnswers, TriageResult, Recommendation, BookingState
@@ -294,4 +294,104 @@ def booking_to_dict(booking: BookingModel) -> Dict[str, Any]:
         "symptoms": booking.symptoms or [],
         "location": booking.location
     }
+
+
+# Notification functions
+def create_notification(
+    user_email: str,
+    title: str,
+    message: str,
+    notification_type: str,
+    related_session_id: Optional[str] = None,
+    related_booking_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> NotificationModel:
+    """Create a new notification."""
+    db = SessionLocal()
+    try:
+        notification = NotificationModel(
+            id=str(uuid.uuid4()),
+            user_email=user_email,
+            title=title,
+            message=message,
+            type=notification_type,
+            related_session_id=related_session_id,
+            related_booking_id=related_booking_id,
+            metadata=metadata,
+            read=False
+        )
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+        return notification
+    finally:
+        db.close()
+
+
+def get_notifications(user_email: str, unread_only: bool = False, limit: Optional[int] = None) -> List[NotificationModel]:
+    """Get notifications for a user."""
+    db = SessionLocal()
+    try:
+        query = db.query(NotificationModel).filter(NotificationModel.user_email == user_email)
+        if unread_only:
+            query = query.filter(NotificationModel.read == False)
+        query = query.order_by(NotificationModel.created_at.desc())
+        if limit:
+            query = query.limit(limit)
+        return query.all()
+    finally:
+        db.close()
+
+
+def get_unread_count(user_email: str) -> int:
+    """Get count of unread notifications for a user."""
+    db = SessionLocal()
+    try:
+        return db.query(NotificationModel).filter(
+            NotificationModel.user_email == user_email,
+            NotificationModel.read == False
+        ).count()
+    finally:
+        db.close()
+
+
+def mark_notification_read(notification_id: str) -> Optional[NotificationModel]:
+    """Mark a notification as read."""
+    db = SessionLocal()
+    try:
+        notification = db.query(NotificationModel).filter(NotificationModel.id == notification_id).first()
+        if notification:
+            notification.read = True
+            db.commit()
+            db.refresh(notification)
+        return notification
+    finally:
+        db.close()
+
+
+def mark_all_notifications_read(user_email: str) -> int:
+    """Mark all notifications as read for a user."""
+    db = SessionLocal()
+    try:
+        count = db.query(NotificationModel).filter(
+            NotificationModel.user_email == user_email,
+            NotificationModel.read == False
+        ).update({"read": True})
+        db.commit()
+        return count
+    finally:
+        db.close()
+
+
+def get_hospital_staff_emails(facility_name: str) -> List[str]:
+    """Get all hospital staff emails for a facility."""
+    db = SessionLocal()
+    try:
+        staff = db.query(UserModel).filter(
+            UserModel.role == "hospital_staff",
+            UserModel.facility_name == facility_name
+        ).all()
+        return [user.email for user in staff]
+    finally:
+        db.close()
 

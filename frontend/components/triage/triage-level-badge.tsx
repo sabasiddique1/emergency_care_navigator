@@ -19,3 +19,4 @@ export function TriageLevelBadge({ level }: TriageLevelBadgeProps) {
   )
 }
 
+

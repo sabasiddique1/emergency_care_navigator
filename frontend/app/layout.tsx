@@ -20,7 +20,7 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: "EmergencyCareNavigator",
+  title: "Emergency Care Navigator",
   description: "Multi-Agent Emergency Routing & Handoff Assistant",
 }
 

@@ -43,6 +43,16 @@ export default function HospitalPanel() {
     if (selectedFacility) {
       loadBookings(selectedFacility);
     }
+    
+    // Auto-refresh every 30 seconds for real-time updates
+    const interval = setInterval(() => {
+      loadFacilities();
+      if (selectedFacility) {
+        loadBookings(selectedFacility);
+      }
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(interval);
   }, [selectedFacility]);
 
   const loadFacilities = async () => {

@@ -135,7 +135,7 @@ class NotificationModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
     # JSON field for additional data
-    metadata = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)
 
 
 class MemoryModel(Base):

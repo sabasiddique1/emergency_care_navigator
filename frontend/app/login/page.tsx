@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,14 +12,23 @@ import { Stethoscope, Building2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isLogin, setIsLogin] = useState(!searchParams.get('register'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'patient' | 'hospital_staff'>('patient');
   const [facilityName, setFacilityName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register, isAuthenticated } = useAuth();
+
+  // Redirect to dashboard if already logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +53,7 @@ export default function LoginPage() {
         <CardHeader className="text-center space-y-4">
           <div className="flex items-center justify-center gap-2">
             <Stethoscope className="h-8 w-8 text-primary" />
-            <CardTitle className="text-3xl">EmergencyCare</CardTitle>
+            <CardTitle className="text-3xl">Emergency Care</CardTitle>
           </div>
           <CardDescription>
             Multi-Agent Emergency Routing & Handoff System
@@ -206,4 +216,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
 

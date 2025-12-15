@@ -25,8 +25,15 @@ def load_memory() -> MemoryBank:
 
 def save_memory(mem: MemoryBank) -> None:
     """Save memory bank to JSON file."""
-    with open(MEM_PATH, "w", encoding="utf-8") as f:
-        json.dump(mem.model_dump(), f, indent=2)
+    try:
+        # Use atomic write: write to temp file first, then rename
+        temp_file = f"{MEM_PATH}.tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(mem.model_dump(), f, indent=2)
+        os.replace(temp_file, MEM_PATH)
+    except Exception as e:
+        log_event("memory_save_error", error=str(e), path=MEM_PATH)
+        raise
 
 
 

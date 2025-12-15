@@ -7,6 +7,8 @@ from typing import Dict, Any, List, Optional
 import uuid
 import os
 import base64
+import logging
+import traceback
 
 from app.models import IntakeAnswers, Recommendation, BookingState, HospitalBooking, LoginRequest, RegisterRequest, AuthResponse, User
 from datetime import datetime, timedelta
@@ -1094,8 +1096,12 @@ async def register(request: RegisterRequest):
             }
         )
     except ValueError as e:
+        log_event("register_error", error=str(e), email=request.email, role=request.role)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        log_event("register_error", error=str(e), email=request.email, role=request.role)
+        error_details = traceback.format_exc()
+        logging.error(f"Registration failed for {request.email}: {error_details}")
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 

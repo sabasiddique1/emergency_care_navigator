@@ -23,33 +23,45 @@ else:
 
 def load_users() -> Dict[str, User]:
     """Load users from JSON file."""
-    if os.path.exists(USERS_FILE):
-        try:
+    try:
+        if os.path.exists(USERS_FILE):
             with open(USERS_FILE, "r") as f:
                 data = json.load(f)
                 return {email: User(**user) for email, user in data.items()}
-        except Exception:
-            return {}
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to load users from {USERS_FILE}: {e}")
     return {}
 
 
 def save_users(users: Dict[str, User]) -> None:
     """Save users to JSON file."""
-    data = {
-        email: {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "facility_name": user.facility_name,
-            "password_hash": user.password_hash
+    try:
+        data = {
+            email: {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "role": user.role,
+                "facility_name": user.facility_name,
+                "password_hash": user.password_hash
+            }
+            for email, user in users.items()
         }
-        for email, user in users.items()
-    }
-    # Ensure directory exists (for /tmp path)
-    os.makedirs(os.path.dirname(USERS_FILE) if os.path.dirname(USERS_FILE) else ".", exist_ok=True)
-    with open(USERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+        # Ensure directory exists (for nested paths like /tmp/uploads, but /tmp always exists)
+        dir_path = os.path.dirname(USERS_FILE)
+        if dir_path and dir_path != "/" and dir_path != "/tmp" and not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Use atomic write: write to temp file first, then rename
+        temp_file = f"{USERS_FILE}.tmp"
+        with open(temp_file, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, USERS_FILE)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to save users to {USERS_FILE}: {e}")
+        raise
 
 
 def hash_password(password: str) -> str:
@@ -91,26 +103,33 @@ def get_user_by_email(email: str) -> Optional[User]:
 
 def create_user(email: str, password: str, name: str, role: str, facility_name: Optional[str] = None) -> User:
     """Create a new user."""
-    users = load_users()
-    
-    if email.lower() in users:
-        raise ValueError("User already exists")
-    
-    if role == "hospital_staff" and not facility_name:
-        raise ValueError("facility_name is required for hospital staff")
-    
-    user = User(
-        id=secrets.token_urlsafe(16),
-        email=email.lower(),
-        name=name,
-        role=role,
-        facility_name=facility_name,
-        password_hash=hash_password(password)
-    )
-    
-    users[email.lower()] = user
-    save_users(users)
-    return user
+    try:
+        users = load_users()
+        
+        if email.lower() in users:
+            raise ValueError("User already exists")
+        
+        if role == "hospital_staff" and not facility_name:
+            raise ValueError("facility_name is required for hospital staff")
+        
+        user = User(
+            id=secrets.token_urlsafe(16),
+            email=email.lower(),
+            name=name,
+            role=role,
+            facility_name=facility_name,
+            password_hash=hash_password(password)
+        )
+        
+        users[email.lower()] = user
+        save_users(users)
+        return user
+    except ValueError:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to create user {email}: {e}")
+        raise ValueError(f"Failed to create user: {str(e)}")
 
 
 def authenticate_user(email: str, password: str) -> Optional[User]:

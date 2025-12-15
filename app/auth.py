@@ -14,7 +14,11 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 # User storage (in production, use a database)
-USERS_FILE = "users.json"
+# For Vercel/serverless: use /tmp directory for file storage
+if os.getenv("VERCEL"):
+    USERS_FILE = "/tmp/users.json"
+else:
+    USERS_FILE = "users.json"
 
 
 def load_users() -> Dict[str, User]:
@@ -42,6 +46,8 @@ def save_users(users: Dict[str, User]) -> None:
         }
         for email, user in users.items()
     }
+    # Ensure directory exists (for /tmp path)
+    os.makedirs(os.path.dirname(USERS_FILE) if os.path.dirname(USERS_FILE) else ".", exist_ok=True)
     with open(USERS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -120,16 +126,22 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
 # Initialize with demo users if file doesn't exist
 def init_demo_users():
     """Initialize demo users for testing."""
-    users = load_users()
-    if not users:
-        # Demo patient
-        create_user("patient@demo.com", "patient123", "Demo Patient", "patient")
-        # Demo hospital staff
-        create_user("hospital@demo.com", "hospital123", "Hospital Staff", "hospital_staff", "Aga Khan University Hospital")
-        create_user("staff@demo.com", "staff123", "Receptionist", "hospital_staff", "Jinnah Hospital")
+    try:
+        users = load_users()
+        if not users:
+            # Demo patient
+            create_user("patient@demo.com", "patient123", "Demo Patient", "patient")
+            # Demo hospital staff
+            create_user("hospital@demo.com", "hospital123", "Hospital Staff", "hospital_staff", "Aga Khan University Hospital")
+            create_user("staff@demo.com", "staff123", "Receptionist", "hospital_staff", "Jinnah Hospital")
+    except Exception as e:
+        # Log error but don't fail - users might be initialized later or via database
+        import logging
+        logging.warning(f"Failed to initialize demo users: {e}")
 
 
-# Initialize on import
+# Initialize on import (only if not in Vercel or if file is writable)
+# On Vercel, this will be called on each cold start, which is fine
 init_demo_users()
 
 

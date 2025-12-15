@@ -5,7 +5,11 @@ from typing import Optional
 from app.models import MemoryBank
 from app.observability import log_event
 
-MEM_PATH = "memory_bank.json"
+# Memory file path - use /tmp on Vercel/serverless
+if os.getenv("VERCEL"):
+    MEM_PATH = "/tmp/memory_bank.json"
+else:
+    MEM_PATH = "memory_bank.json"
 
 
 def load_memory() -> MemoryBank:

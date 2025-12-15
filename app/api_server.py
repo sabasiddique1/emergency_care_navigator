@@ -59,7 +59,11 @@ hospital_bookings: Dict[str, List[Dict[str, Any]]] = {}
 patient_requests: Dict[str, List[Dict[str, Any]]] = {}
 
 # Store uploaded documents
-UPLOAD_DIR = "uploads"
+# For Vercel/serverless: use /tmp directory for file uploads
+if os.getenv("VERCEL"):
+    UPLOAD_DIR = "/tmp/uploads"
+else:
+    UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Authentication
@@ -1098,21 +1102,27 @@ async def register(request: RegisterRequest):
 @app.post("/api/auth/login", response_model=AuthResponse)
 async def login(request: LoginRequest):
     """Login and get access token."""
-    user = authenticate_user(request.email, request.password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-    
-    access_token = create_access_token(data={"sub": user.email, "role": user.role})
-    return AuthResponse(
-        access_token=access_token,
-        user={
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "facility_name": user.facility_name
-        }
-    )
+    try:
+        user = authenticate_user(request.email, request.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Incorrect email or password")
+        
+        access_token = create_access_token(data={"sub": user.email, "role": user.role})
+        return AuthResponse(
+            access_token=access_token,
+            user={
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "role": user.role,
+                "facility_name": user.facility_name
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_event("login_error", error=str(e), email=request.email)
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 
 @app.get("/api/auth/me")

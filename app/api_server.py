@@ -39,6 +39,17 @@ async def startup_event():
     """Initialize database on application startup."""
     init_db()
     log_event("database_initialized", message="Database initialized successfully")
+    
+    # Ensure demo users exist (for Vercel cold starts)
+    try:
+        from app.auth import init_demo_users, load_users
+        users = load_users()
+        if not users:
+            logging.info("No users found, initializing demo users...")
+            init_demo_users()
+            logging.info("Demo users initialized successfully")
+    except Exception as e:
+        logging.warning(f"Failed to initialize demo users on startup: {e}")
 
 # CORS middleware
 app.add_middleware(
@@ -1109,9 +1120,23 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     """Login and get access token."""
     try:
+        # Ensure demo users exist (for cold starts on Vercel)
+        from app.auth import init_demo_users, load_users
+        users = load_users()
+        if not users:
+            try:
+                init_demo_users()
+            except Exception as init_error:
+                logging.warning(f"Failed to initialize demo users: {init_error}")
+        
         user = authenticate_user(request.email, request.password)
         if not user:
             raise HTTPException(status_code=401, detail="Incorrect email or password")
+        
+        # Verify JWT_SECRET_KEY is set
+        from app.auth import SECRET_KEY
+        if SECRET_KEY == "your-secret-key-change-in-production":
+            logging.error("JWT_SECRET_KEY not set! Using default key.")
         
         access_token = create_access_token(data={"sub": user.email, "role": user.role})
         return AuthResponse(
@@ -1128,6 +1153,8 @@ async def login(request: LoginRequest):
         raise
     except Exception as e:
         log_event("login_error", error=str(e), email=request.email)
+        error_details = traceback.format_exc()
+        logging.error(f"Login failed for {request.email}: {error_details}")
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 

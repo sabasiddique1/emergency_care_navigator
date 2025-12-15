@@ -1,4 +1,7 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API base URL
+// - In development, set NEXT_PUBLIC_API_URL to "http://localhost:8000"
+// - In production (Vercel), you can leave it unset so it defaults to same-origin "/api"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface IntakeAnswers {
   name?: string;

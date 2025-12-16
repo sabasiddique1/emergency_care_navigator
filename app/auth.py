@@ -56,11 +56,17 @@ def verify_token(token: str) -> Optional[dict]:
 def get_user_by_email(email: str) -> Optional[User]:
     """Get user by email from database."""
     # CRITICAL: Ensure database is initialized before any query
-    from app.database import init_db
-    init_db()  # This is safe to call multiple times (thread-safe)
-    
-    db = SessionLocal()
     try:
+        from app.database import init_db, SessionLocal, UserModel
+        init_db()  # This is safe to call multiple times (thread-safe)
+    except Exception as init_error:
+        import logging
+        logging.error(f"Failed to import/initialize database in get_user_by_email: {init_error}", exc_info=True)
+        return None
+    
+    db = None
+    try:
+        db = SessionLocal()
         user_model = db.query(UserModel).filter(UserModel.email == email.lower()).first()
         if not user_model:
             return None
@@ -78,7 +84,11 @@ def get_user_by_email(email: str) -> Optional[User]:
         logging.error(f"Error getting user by email {email}: {e}", exc_info=True)
         return None
     finally:
-        db.close()
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 def create_user(email: str, password: str, name: str, role: str, facility_name: Optional[str] = None) -> User:

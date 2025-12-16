@@ -1219,21 +1219,36 @@ async def login(request: LoginRequest):
         # On Vercel cold starts, startup event might not run before first request
         # This MUST happen synchronously before any database operations
         try:
+            from app.database import init_db
             init_db()  # Thread-safe, idempotent - safe to call multiple times
             logging.info("Database initialization check completed")
         except Exception as init_error:
             logging.error(f"Database initialization failed: {init_error}", exc_info=True)
+            import traceback
             return JSONResponse(
                 status_code=500,
                 content={
                     "detail": f"Database initialization failed: {str(init_error)}",
-                    "error_type": type(init_error).__name__
+                    "error_type": type(init_error).__name__,
+                    "traceback": traceback.format_exc()
                 }
             )
         
         # Ensure demo users exist in database (for cold starts on Vercel)
-        from app.auth import init_demo_users, SECRET_KEY
-        from app.database import SessionLocal, UserModel
+        try:
+            from app.auth import init_demo_users, SECRET_KEY
+            from app.database import SessionLocal, UserModel
+        except ImportError as import_error:
+            logging.error(f"Failed to import required modules: {import_error}", exc_info=True)
+            import traceback
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": f"Failed to import required modules: {str(import_error)}",
+                    "error_type": type(import_error).__name__,
+                    "traceback": traceback.format_exc()
+                }
+            )
         
         db = None
         try:
@@ -1252,17 +1267,22 @@ async def login(request: LoginRequest):
                     # Don't fail login if demo users fail - user might be registering
         except Exception as db_error:
             logging.error(f"Database query error in login: {db_error}", exc_info=True)
+            import traceback
             return JSONResponse(
                 status_code=500,
                 content={
                     "detail": f"Database query error: {str(db_error)}",
                     "error_type": type(db_error).__name__,
-                    "hint": "Database might not be initialized. Check /api/debug/auth"
+                    "hint": "Database might not be initialized. Check /api/debug/auth",
+                    "traceback": traceback.format_exc()
                 }
             )
         finally:
             if db:
-                db.close()
+                try:
+                    db.close()
+                except Exception:
+                    pass
         
         # Verify JWT_SECRET_KEY is set
         if SECRET_KEY == "your-secret-key-change-in-production":
@@ -1270,7 +1290,19 @@ async def login(request: LoginRequest):
         
         # Authenticate user
         try:
+            from app.auth import authenticate_user, create_access_token
             user = authenticate_user(request.email, request.password)
+        except ImportError as import_error:
+            logging.error(f"Failed to import auth functions: {import_error}", exc_info=True)
+            import traceback
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": f"Failed to import auth functions: {str(import_error)}",
+                    "error_type": type(import_error).__name__,
+                    "traceback": traceback.format_exc()
+                }
+            )
         except Exception as auth_error:
             logging.error(f"Authentication error: {auth_error}", exc_info=True)
             import traceback
@@ -1291,9 +1323,14 @@ async def login(request: LoginRequest):
             access_token = create_access_token(data={"sub": user.email, "role": user.role})
         except Exception as token_error:
             logging.error(f"Token creation error: {token_error}", exc_info=True)
+            import traceback
             return JSONResponse(
                 status_code=500,
-                content={"detail": f"Token creation failed: {str(token_error)}", "error_type": type(token_error).__name__}
+                content={
+                    "detail": f"Token creation failed: {str(token_error)}",
+                    "error_type": type(token_error).__name__,
+                    "traceback": traceback.format_exc()
+                }
             )
         
         return AuthResponse(
@@ -1309,9 +1346,12 @@ async def login(request: LoginRequest):
     except HTTPException:
         raise
     except Exception as e:
-        log_event("login_error", error=str(e), email=request.email)
+        try:
+            log_event("login_error", error=str(e), email=request.email if hasattr(request, 'email') else "unknown")
+        except Exception:
+            pass  # Don't fail if logging fails
         error_details = traceback.format_exc()
-        logging.error(f"Login failed for {request.email}: {error_details}")
+        logging.error(f"Login failed: {error_details}")
         return JSONResponse(
             status_code=500,
             content={

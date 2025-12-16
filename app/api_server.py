@@ -32,7 +32,19 @@ from app.db_service import (
     mark_notification_read, mark_all_notifications_read, get_hospital_staff_emails
 )
 
-app = FastAPI(title="EmergencyCareNavigator API")
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+try:
+    app = FastAPI(title="EmergencyCareNavigator API")
+    logger.info("FastAPI app created successfully")
+except Exception as e:
+    logger.error(f"Failed to create FastAPI app: {e}", exc_info=True)
+    raise
 
 # Global exception handler to ensure JSON responses
 @app.exception_handler(Exception)

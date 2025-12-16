@@ -1,10 +1,21 @@
 """Database setup and connection."""
-from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
 import os
-import uuid
+import logging
+
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+try:
+    from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import sessionmaker, relationship
+    from datetime import datetime
+    import uuid
+    logger.info("SQLAlchemy imports successful")
+except ImportError as e:
+    logger.error(f"Failed to import SQLAlchemy: {e}", exc_info=True)
+    raise
 
 # Database configuration
 # Production: Use PostgreSQL (via DATABASE_URL or Supabase env vars)
@@ -247,10 +258,15 @@ def init_db():
             # Test connection
             try:
                 with engine.connect() as conn:
-                    conn.execute("SELECT 1")
+                    from sqlalchemy import text
+                    conn.execute(text("SELECT 1"))
                 logging.info("Database connection test successful")
             except Exception as conn_error:
-                logging.warning(f"Database connection test failed: {conn_error}")
+                import logging
+                logging.error(f"Database connection test failed: {conn_error}", exc_info=True)
+                # On Vercel with PostgreSQL, this might indicate missing env vars
+                if os.getenv("VERCEL") and "postgresql" in DATABASE_URL:
+                    logging.error("PostgreSQL connection failed on Vercel. Check SUPABASE_URL and SUPABASE_DB_PASSWORD env vars.")
         except Exception as e:
             import logging
             logging.error(f"Database initialization error: {e}", exc_info=True)

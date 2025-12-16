@@ -1,8 +1,9 @@
 """FastAPI server for EmergencyCareNavigator."""
-from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from typing import Dict, Any, List, Optional
 import uuid
 import os
@@ -33,23 +34,44 @@ from app.db_service import (
 
 app = FastAPI(title="EmergencyCareNavigator API")
 
+# Global exception handler to ensure JSON responses
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions and return JSON."""
+    logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors and return JSON."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc)}
+    )
+
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on application startup."""
-    init_db()
-    log_event("database_initialized", message="Database initialized successfully")
-    
-    # Ensure demo users exist (for Vercel cold starts)
     try:
+        init_db()
+        log_event("database_initialized", message="Database initialized successfully")
+        
+        # Ensure demo users exist (for Vercel cold starts)
         from app.auth import init_demo_users, load_users
         users = load_users()
         if not users:
             logging.info("No users found, initializing demo users...")
-            init_demo_users()
-            logging.info("Demo users initialized successfully")
+            try:
+                init_demo_users()
+                logging.info("Demo users initialized successfully")
+            except Exception as e:
+                logging.warning(f"Failed to initialize demo users on startup: {e}")
     except Exception as e:
-        logging.warning(f"Failed to initialize demo users on startup: {e}")
+        logging.error(f"Startup error: {e}", exc_info=True)
 
 # CORS middleware
 app.add_middleware(
@@ -72,11 +94,7 @@ hospital_bookings: Dict[str, List[Dict[str, Any]]] = {}
 patient_requests: Dict[str, List[Dict[str, Any]]] = {}
 
 # Store uploaded documents
-# For Vercel/serverless: use /tmp directory for file uploads
-if os.getenv("VERCEL"):
-    UPLOAD_DIR = "/tmp/uploads"
-else:
-    UPLOAD_DIR = "uploads"
+UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Authentication
@@ -1107,12 +1125,8 @@ async def register(request: RegisterRequest):
             }
         )
     except ValueError as e:
-        log_event("register_error", error=str(e), email=request.email, role=request.role)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log_event("register_error", error=str(e), email=request.email, role=request.role)
-        error_details = traceback.format_exc()
-        logging.error(f"Registration failed for {request.email}: {error_details}")
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 
@@ -1121,22 +1135,23 @@ async def login(request: LoginRequest):
     """Login and get access token."""
     try:
         # Ensure demo users exist (for cold starts on Vercel)
-        from app.auth import init_demo_users, load_users
+        from app.auth import init_demo_users, load_users, SECRET_KEY
         users = load_users()
         if not users:
             try:
+                logging.info("No users found, initializing demo users...")
                 init_demo_users()
+                logging.info("Demo users initialized")
             except Exception as init_error:
                 logging.warning(f"Failed to initialize demo users: {init_error}")
+        
+        # Verify JWT_SECRET_KEY is set
+        if SECRET_KEY == "your-secret-key-change-in-production":
+            logging.error("JWT_SECRET_KEY not set! Using default key.")
         
         user = authenticate_user(request.email, request.password)
         if not user:
             raise HTTPException(status_code=401, detail="Incorrect email or password")
-        
-        # Verify JWT_SECRET_KEY is set
-        from app.auth import SECRET_KEY
-        if SECRET_KEY == "your-secret-key-change-in-production":
-            logging.error("JWT_SECRET_KEY not set! Using default key.")
         
         access_token = create_access_token(data={"sub": user.email, "role": user.role})
         return AuthResponse(

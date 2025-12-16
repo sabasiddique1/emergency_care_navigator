@@ -151,10 +151,31 @@ class MemoryModel(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# Track if database is initialized (for thread safety)
+_db_initialized = False
+import threading
+_init_lock = threading.Lock()
+
 # Create all tables
 def init_db():
     """Initialize database - create all tables."""
-    Base.metadata.create_all(bind=engine)
+    global _db_initialized
+    
+    # Double-check locking pattern for thread safety
+    if _db_initialized:
+        return
+    
+    with _init_lock:
+        if _db_initialized:
+            return
+        
+        try:
+            Base.metadata.create_all(bind=engine)
+            _db_initialized = True
+        except Exception as e:
+            import logging
+            logging.error(f"Database initialization error: {e}", exc_info=True)
+            raise
 
 
 # Dependency to get database session

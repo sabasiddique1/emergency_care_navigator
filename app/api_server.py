@@ -1198,11 +1198,9 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     """Login and get access token."""
     try:
-        # Ensure database is initialized first
-        try:
-            init_db()
-        except Exception as db_init_error:
-            logging.warning(f"Database init warning (may already exist): {db_init_error}")
+        # CRITICAL: Ensure database is initialized BEFORE any queries
+        # On Vercel cold starts, startup event might not run before first request
+        init_db()  # Thread-safe, can be called multiple times
         
         # Ensure demo users exist in database (for cold starts on Vercel)
         from app.auth import init_demo_users, SECRET_KEY

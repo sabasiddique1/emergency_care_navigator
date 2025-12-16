@@ -55,15 +55,12 @@ def verify_token(token: str) -> Optional[dict]:
 
 def get_user_by_email(email: str) -> Optional[User]:
     """Get user by email from database."""
+    # CRITICAL: Ensure database is initialized before any query
+    from app.database import init_db
+    init_db()  # This is safe to call multiple times (thread-safe)
+    
     db = SessionLocal()
     try:
-        # Ensure database is initialized
-        from app.database import init_db
-        try:
-            init_db()
-        except Exception:
-            pass  # Database might already be initialized
-        
         user_model = db.query(UserModel).filter(UserModel.email == email.lower()).first()
         if not user_model:
             return None
@@ -86,6 +83,10 @@ def get_user_by_email(email: str) -> Optional[User]:
 
 def create_user(email: str, password: str, name: str, role: str, facility_name: Optional[str] = None) -> User:
     """Create a new user in database."""
+    # CRITICAL: Ensure database is initialized before any query
+    from app.database import init_db
+    init_db()  # This is safe to call multiple times (thread-safe)
+    
     db = SessionLocal()
     try:
         # Check if user already exists
@@ -142,6 +143,10 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
 # Initialize with demo users if they don't exist in database
 def init_demo_users():
     """Initialize demo users for testing in database."""
+    # CRITICAL: Ensure database is initialized before any query
+    from app.database import init_db
+    init_db()  # This is safe to call multiple times (thread-safe)
+    
     db = SessionLocal()
     try:
         # Check if any users exist

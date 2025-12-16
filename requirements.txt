@@ -9,6 +9,7 @@ PyPDF2==3.0.1
 pytesseract==0.3.10
 Pillow==10.1.0
 sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
 
 # Optional: For Kaggle notebook (minimal dependencies)
 # These warnings about bigframes, google-cloud-translate, ray, pydrive2, gcsfs

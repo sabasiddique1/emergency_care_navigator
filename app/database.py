@@ -6,18 +6,47 @@ from datetime import datetime
 import os
 import uuid
 
-# Database file path
-# For Vercel/serverless: use /tmp directory for SQLite
-if os.getenv("VERCEL"):
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////tmp/emergencycare.db")
-else:
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./emergencycare.db")
+# Database configuration
+# Production: Use PostgreSQL (via DATABASE_URL env var - Supabase, Vercel Postgres, Neon, etc.)
+# Local: Use SQLite for development
+# 
+# To use PostgreSQL in production:
+# 1. Set DATABASE_URL environment variable in Vercel
+#    Format: postgresql://user:password@host:port/database
+# 2. Or use Supabase (free): https://supabase.com
+#    Get connection string from Supabase Dashboard → Settings → Database
 
-# Create engine
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    # No DATABASE_URL set - use SQLite (local development)
+    if os.getenv("VERCEL"):
+        # On Vercel without DATABASE_URL, use /tmp (but this is unreliable)
+        DATABASE_URL = "sqlite:////tmp/emergencycare.db"
+    else:
+        # Local development
+        DATABASE_URL = "sqlite:///./emergencycare.db"
+
+# Convert postgres:// to postgresql:// for SQLAlchemy compatibility
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Create engine with appropriate connection args
+if "sqlite" in DATABASE_URL:
+    # SQLite-specific connection args
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True  # Verify connections before using
+    )
+else:
+    # PostgreSQL connection args
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before using
+        pool_size=5,  # Connection pool size
+        max_overflow=10  # Max overflow connections
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

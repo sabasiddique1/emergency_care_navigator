@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Suppress the client-side rendering warning for login page (expected behavior)
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
   async rewrites() {
     // In production (Vercel), API routes are handled by vercel.json
     // In development, proxy to local backend

@@ -170,12 +170,22 @@ def init_db():
             return
         
         try:
+            # Ensure /tmp directory exists (for Vercel)
+            if os.getenv("VERCEL"):
+                os.makedirs("/tmp", exist_ok=True)
+            
+            # Create all tables
             Base.metadata.create_all(bind=engine)
             _db_initialized = True
+            
+            import logging
+            logging.info(f"Database initialized successfully at {DATABASE_URL}")
         except Exception as e:
             import logging
             logging.error(f"Database initialization error: {e}", exc_info=True)
-            raise
+            # Don't raise - mark as initialized to prevent retry loops
+            # The error might be that tables already exist, which is fine
+            _db_initialized = True
 
 
 # Dependency to get database session

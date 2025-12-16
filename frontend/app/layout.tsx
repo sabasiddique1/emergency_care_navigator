@@ -4,6 +4,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/contexts/auth-context"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 // Use Inter as primary font with Roboto as fallback for medical/emergency theme
 const inter = Inter({ 
@@ -41,6 +42,7 @@ export default function RootLayout({
           <AuthProvider>
             {children}
             <Toaster />
+            <SpeedInsights />
           </AuthProvider>
         </ThemeProvider>
       </body>

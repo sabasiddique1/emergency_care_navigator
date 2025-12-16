@@ -711,16 +711,33 @@ async def health():
 async def debug_auth():
     """Debug endpoint to check authentication setup."""
     try:
-        from app.database import SessionLocal, UserModel, engine
+        from app.database import SessionLocal, UserModel, engine, DATABASE_URL
         from app.auth import SECRET_KEY
         import os
         
+        # Check environment variables
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_password = os.getenv("SUPABASE_DB_PASSWORD")
+        database_url_env = os.getenv("DATABASE_URL")
+        
         debug_info = {
             "vercel_env": os.getenv("VERCEL", "not set"),
-            "database_url": str(engine.url),
+            "database_type": "PostgreSQL" if "postgresql" in str(engine.url) else "SQLite",
+            "database_url_set": bool(database_url_env),
+            "database_url": str(engine.url).replace(str(engine.url.password) if engine.url.password else "", "***") if hasattr(engine.url, 'password') else str(engine.url),
+            "supabase_url_set": bool(supabase_url),
+            "supabase_url": supabase_url if supabase_url else "not set",
+            "supabase_password_set": bool(supabase_password),
             "jwt_secret_set": SECRET_KEY != "your-secret-key-change-in-production",
             "jwt_secret_length": len(SECRET_KEY) if SECRET_KEY else 0,
         }
+        
+        # Add setup recommendations
+        if os.getenv("VERCEL"):
+            if not database_url_env and not (supabase_url and supabase_password):
+                debug_info["setup_required"] = "Set SUPABASE_URL and SUPABASE_DB_PASSWORD in Vercel environment variables"
+            elif not database_url_env and (supabase_url and supabase_password):
+                debug_info["setup_status"] = "Supabase env vars detected - connection string should be built automatically"
         
         # Try to query database
         try:
@@ -1256,9 +1273,14 @@ async def login(request: LoginRequest):
             user = authenticate_user(request.email, request.password)
         except Exception as auth_error:
             logging.error(f"Authentication error: {auth_error}", exc_info=True)
+            import traceback
             return JSONResponse(
                 status_code=500,
-                content={"detail": f"Authentication error: {str(auth_error)}", "error_type": type(auth_error).__name__}
+                content={
+                    "detail": f"Authentication error: {str(auth_error)}",
+                    "error_type": type(auth_error).__name__,
+                    "traceback": traceback.format_exc()
+                }
             )
         
         if not user:

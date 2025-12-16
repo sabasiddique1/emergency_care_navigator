@@ -28,14 +28,28 @@ if not DATABASE_URL:
         # Or: https://lgbpmgaacqawvfavtdzu.supabase.co
         try:
             # Remove https:// and .supabase.co to get project ref
-            project_ref = supabase_url.replace("https://", "").replace(".supabase.co", "")
+            # Handle both with and without trailing slash
+            clean_url = supabase_url.strip().rstrip('/')
+            if clean_url.startswith("https://"):
+                clean_url = clean_url.replace("https://", "")
+            if clean_url.endswith(".supabase.co"):
+                project_ref = clean_url.replace(".supabase.co", "")
+            else:
+                # If format is different, try to extract project ref
+                parts = clean_url.split('.')
+                if len(parts) >= 2:
+                    project_ref = parts[0]
+                else:
+                    raise ValueError(f"Invalid Supabase URL format: {supabase_url}")
+            
             # Build PostgreSQL connection string
             DATABASE_URL = f"postgresql://postgres:{supabase_password}@db.{project_ref}.supabase.co:5432/postgres"
             import logging
             logging.info(f"Built DATABASE_URL from Supabase env vars (project: {project_ref})")
         except Exception as e:
             import logging
-            logging.warning(f"Failed to build DATABASE_URL from Supabase vars: {e}")
+            logging.error(f"Failed to build DATABASE_URL from Supabase vars: {e}", exc_info=True)
+            # Don't set DATABASE_URL - let it fall back to SQLite or error
 
 # If still no DATABASE_URL, use SQLite
 if not DATABASE_URL:

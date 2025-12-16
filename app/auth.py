@@ -7,61 +7,19 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 from jose import JWTError, jwt
 from app.models import User, LoginRequest, RegisterRequest
+from app.database import SessionLocal, UserModel
 
 # JWT Configuration
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
-# User storage (in production, use a database)
-# For Vercel/serverless: use /tmp directory for file storage
+# User storage - now using database instead of JSON files
+# JSON file path kept for backward compatibility/migration
 if os.getenv("VERCEL"):
     USERS_FILE = "/tmp/users.json"
 else:
     USERS_FILE = "users.json"
-
-
-def load_users() -> Dict[str, User]:
-    """Load users from JSON file."""
-    try:
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE, "r") as f:
-                data = json.load(f)
-                return {email: User(**user) for email, user in data.items()}
-    except Exception as e:
-        import logging
-        logging.warning(f"Failed to load users from {USERS_FILE}: {e}")
-    return {}
-
-
-def save_users(users: Dict[str, User]) -> None:
-    """Save users to JSON file."""
-    try:
-        data = {
-            email: {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name,
-                "role": user.role,
-                "facility_name": user.facility_name,
-                "password_hash": user.password_hash
-            }
-            for email, user in users.items()
-        }
-        # Ensure directory exists (for nested paths like /tmp/uploads, but /tmp always exists)
-        dir_path = os.path.dirname(USERS_FILE)
-        if dir_path and dir_path != "/" and dir_path != "/tmp" and not os.path.exists(dir_path):
-            os.makedirs(dir_path, exist_ok=True)
-        
-        # Use atomic write: write to temp file first, then rename
-        temp_file = f"{USERS_FILE}.tmp"
-        with open(temp_file, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(temp_file, USERS_FILE)
-    except Exception as e:
-        import logging
-        logging.error(f"Failed to save users to {USERS_FILE}: {e}")
-        raise
 
 
 def hash_password(password: str) -> str:
@@ -96,23 +54,39 @@ def verify_token(token: str) -> Optional[dict]:
 
 
 def get_user_by_email(email: str) -> Optional[User]:
-    """Get user by email."""
-    users = load_users()
-    return users.get(email.lower())
+    """Get user by email from database."""
+    db = SessionLocal()
+    try:
+        user_model = db.query(UserModel).filter(UserModel.email == email.lower()).first()
+        if not user_model:
+            return None
+        
+        return User(
+            id=user_model.id,
+            email=user_model.email,
+            name=user_model.name,
+            role=user_model.role,
+            facility_name=user_model.facility_name,
+            password_hash=user_model.password_hash
+        )
+    finally:
+        db.close()
 
 
 def create_user(email: str, password: str, name: str, role: str, facility_name: Optional[str] = None) -> User:
-    """Create a new user."""
+    """Create a new user in database."""
+    db = SessionLocal()
     try:
-        users = load_users()
-        
-        if email.lower() in users:
+        # Check if user already exists
+        existing = db.query(UserModel).filter(UserModel.email == email.lower()).first()
+        if existing:
             raise ValueError("User already exists")
         
         if role == "hospital_staff" and not facility_name:
             raise ValueError("facility_name is required for hospital staff")
         
-        user = User(
+        # Create new user
+        user_model = UserModel(
             id=secrets.token_urlsafe(16),
             email=email.lower(),
             name=name,
@@ -121,15 +95,27 @@ def create_user(email: str, password: str, name: str, role: str, facility_name: 
             password_hash=hash_password(password)
         )
         
-        users[email.lower()] = user
-        save_users(users)
-        return user
+        db.add(user_model)
+        db.commit()
+        db.refresh(user_model)
+        
+        return User(
+            id=user_model.id,
+            email=user_model.email,
+            name=user_model.name,
+            role=user_model.role,
+            facility_name=user_model.facility_name,
+            password_hash=user_model.password_hash
+        )
     except ValueError:
         raise
     except Exception as e:
+        db.rollback()
         import logging
         logging.error(f"Failed to create user {email}: {e}")
         raise ValueError(f"Failed to create user: {str(e)}")
+    finally:
+        db.close()
 
 
 def authenticate_user(email: str, password: str) -> Optional[User]:
@@ -142,26 +128,44 @@ def authenticate_user(email: str, password: str) -> Optional[User]:
     return user
 
 
-# Initialize with demo users if file doesn't exist
+# Initialize with demo users if they don't exist in database
 def init_demo_users():
-    """Initialize demo users for testing."""
+    """Initialize demo users for testing in database."""
+    db = SessionLocal()
     try:
-        users = load_users()
-        if not users:
+        # Check if any users exist
+        user_count = db.query(UserModel).count()
+        if user_count == 0:
             # Demo patient
-            create_user("patient@demo.com", "patient123", "Demo Patient", "patient")
+            try:
+                create_user("patient@demo.com", "patient123", "Demo Patient", "patient")
+            except ValueError:
+                pass  # User already exists
+            
             # Demo hospital staff
-            create_user("hospital@demo.com", "hospital123", "Hospital Staff", "hospital_staff", "Aga Khan University Hospital")
-            create_user("staff@demo.com", "staff123", "Receptionist", "hospital_staff", "Jinnah Hospital")
+            try:
+                create_user("hospital@demo.com", "hospital123", "Hospital Staff", "hospital_staff", "Aga Khan University Hospital")
+            except ValueError:
+                pass  # User already exists
+            
+            try:
+                create_user("staff@demo.com", "staff123", "Receptionist", "hospital_staff", "Jinnah Hospital")
+            except ValueError:
+                pass  # User already exists
     except Exception as e:
-        # Log error but don't fail - users might be initialized later or via database
         import logging
         logging.warning(f"Failed to initialize demo users: {e}")
+    finally:
+        db.close()
 
 
-# Initialize on import (only if not in Vercel or if file is writable)
-# On Vercel, this will be called on each cold start, which is fine
-init_demo_users()
+# Initialize on import (will be called on startup)
+# Note: This runs on module import, but database might not be initialized yet
+# So we also call it in the startup event
+try:
+    init_demo_users()
+except Exception:
+    pass  # Will be initialized in startup event
 
 
 

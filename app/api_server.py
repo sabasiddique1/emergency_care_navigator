@@ -60,16 +60,26 @@ async def startup_event():
         init_db()
         log_event("database_initialized", message="Database initialized successfully")
         
-        # Ensure demo users exist (for Vercel cold starts)
-        from app.auth import init_demo_users, load_users
-        users = load_users()
-        if not users:
-            logging.info("No users found, initializing demo users...")
-            try:
-                init_demo_users()
-                logging.info("Demo users initialized successfully")
-            except Exception as e:
-                logging.warning(f"Failed to initialize demo users on startup: {e}")
+        # Ensure demo users exist in database (for Vercel cold starts)
+        from app.auth import init_demo_users
+        from app.database import SessionLocal, UserModel
+        
+        db = SessionLocal()
+        try:
+            user_count = db.query(UserModel).count()
+            if user_count == 0:
+                logging.info("No users found in database, initializing demo users...")
+                try:
+                    init_demo_users()
+                    logging.info("Demo users initialized successfully")
+                except Exception as e:
+                    logging.warning(f"Failed to initialize demo users on startup: {e}")
+            else:
+                logging.info(f"Found {user_count} existing users in database")
+        except Exception as e:
+            logging.error(f"Error checking users: {e}")
+        finally:
+            db.close()
     except Exception as e:
         logging.error(f"Startup error: {e}", exc_info=True)
 

@@ -57,6 +57,13 @@ def get_user_by_email(email: str) -> Optional[User]:
     """Get user by email from database."""
     db = SessionLocal()
     try:
+        # Ensure database is initialized
+        from app.database import init_db
+        try:
+            init_db()
+        except Exception:
+            pass  # Database might already be initialized
+        
         user_model = db.query(UserModel).filter(UserModel.email == email.lower()).first()
         if not user_model:
             return None
@@ -69,6 +76,10 @@ def get_user_by_email(email: str) -> Optional[User]:
             facility_name=user_model.facility_name,
             password_hash=user_model.password_hash
         )
+    except Exception as e:
+        import logging
+        logging.error(f"Error getting user by email {email}: {e}", exc_info=True)
+        return None
     finally:
         db.close()
 

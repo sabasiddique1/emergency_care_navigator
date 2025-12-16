@@ -38,10 +38,16 @@ app = FastAPI(title="EmergencyCareNavigator API")
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle all unhandled exceptions and return JSON."""
-    logging.error(f"Unhandled exception: {exc}", exc_info=True)
+    import traceback
+    error_trace = traceback.format_exc()
+    logging.error(f"Unhandled exception at {request.url}: {exc}\n{error_trace}")
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"}
+        content={
+            "detail": f"Internal server error: {str(exc)}",
+            "error_type": type(exc).__name__,
+            "path": str(request.url.path)
+        }
     )
 
 @app.exception_handler(RequestValidationError)
@@ -699,6 +705,54 @@ async def get_hospitals_with_bookings_legacy() -> List[Dict[str, Any]]:
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "service": "EmergencyCareNavigator"}
+
+
+@app.get("/api/debug/auth")
+async def debug_auth():
+    """Debug endpoint to check authentication setup."""
+    try:
+        from app.database import SessionLocal, UserModel, engine
+        from app.auth import SECRET_KEY
+        import os
+        
+        debug_info = {
+            "vercel_env": os.getenv("VERCEL", "not set"),
+            "database_url": str(engine.url),
+            "jwt_secret_set": SECRET_KEY != "your-secret-key-change-in-production",
+            "jwt_secret_length": len(SECRET_KEY) if SECRET_KEY else 0,
+        }
+        
+        # Try to query database
+        try:
+            db = SessionLocal()
+            try:
+                user_count = db.query(UserModel).count()
+                debug_info["database_accessible"] = True
+                debug_info["user_count"] = user_count
+                
+                # Try to get a user
+                test_user = db.query(UserModel).first()
+                if test_user:
+                    debug_info["sample_user"] = {
+                        "email": test_user.email,
+                        "role": test_user.role
+                    }
+            except Exception as db_error:
+                debug_info["database_accessible"] = False
+                debug_info["database_error"] = str(db_error)
+            finally:
+                db.close()
+        except Exception as e:
+            debug_info["database_error"] = str(e)
+            debug_info["database_accessible"] = False
+        
+        return debug_info
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 
 # Notification endpoints

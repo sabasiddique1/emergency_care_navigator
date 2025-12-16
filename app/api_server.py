@@ -1198,32 +1198,66 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     """Login and get access token."""
     try:
+        # Ensure database is initialized first
+        try:
+            init_db()
+        except Exception as db_init_error:
+            logging.warning(f"Database init warning (may already exist): {db_init_error}")
+        
         # Ensure demo users exist in database (for cold starts on Vercel)
         from app.auth import init_demo_users, SECRET_KEY
         from app.database import SessionLocal, UserModel
         
-        db = SessionLocal()
+        db = None
         try:
+            db = SessionLocal()
             user_count = db.query(UserModel).count()
+            logging.info(f"User count in database: {user_count}")
+            
             if user_count == 0:
                 try:
                     logging.info("No users found in database, initializing demo users...")
                     init_demo_users()
                     logging.info("Demo users initialized")
                 except Exception as init_error:
-                    logging.warning(f"Failed to initialize demo users: {init_error}")
+                    logging.error(f"Failed to initialize demo users: {init_error}", exc_info=True)
+        except Exception as db_error:
+            logging.error(f"Database error in login: {db_error}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Database error: {str(db_error)}", "error_type": type(db_error).__name__}
+            )
         finally:
-            db.close()
+            if db:
+                db.close()
         
         # Verify JWT_SECRET_KEY is set
         if SECRET_KEY == "your-secret-key-change-in-production":
-            logging.error("JWT_SECRET_KEY not set! Using default key.")
+            logging.warning("JWT_SECRET_KEY not set! Using default key.")
         
-        user = authenticate_user(request.email, request.password)
+        # Authenticate user
+        try:
+            user = authenticate_user(request.email, request.password)
+        except Exception as auth_error:
+            logging.error(f"Authentication error: {auth_error}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Authentication error: {str(auth_error)}", "error_type": type(auth_error).__name__}
+            )
+        
         if not user:
             raise HTTPException(status_code=401, detail="Incorrect email or password")
         
-        access_token = create_access_token(data={"sub": user.email, "role": user.role})
+        # Create access token
+        try:
+            access_token = create_access_token(data={"sub": user.email, "role": user.role})
+        except Exception as token_error:
+            logging.error(f"Token creation error: {token_error}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Token creation failed: {str(token_error)}", "error_type": type(token_error).__name__}
+            )
+        
         return AuthResponse(
             access_token=access_token,
             user={
@@ -1240,7 +1274,14 @@ async def login(request: LoginRequest):
         log_event("login_error", error=str(e), email=request.email)
         error_details = traceback.format_exc()
         logging.error(f"Login failed for {request.email}: {error_details}")
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"Login failed: {str(e)}",
+                "error_type": type(e).__name__,
+                "traceback": error_details
+            }
+        )
 
 
 @app.get("/api/auth/me")

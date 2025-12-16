@@ -7,19 +7,38 @@ import os
 import uuid
 
 # Database configuration
-# Production: Use PostgreSQL (via DATABASE_URL env var - Supabase, Vercel Postgres, Neon, etc.)
+# Production: Use PostgreSQL (via DATABASE_URL or Supabase env vars)
 # Local: Use SQLite for development
 # 
-# To use PostgreSQL in production:
-# 1. Set DATABASE_URL environment variable in Vercel
-#    Format: postgresql://user:password@host:port/database
-# 2. Or use Supabase (free): https://supabase.com
-#    Get connection string from Supabase Dashboard → Settings → Database
+# Setup options:
+# 1. EASIEST: Set SUPABASE_URL and SUPABASE_DB_PASSWORD (we'll build connection string)
+# 2. ALTERNATIVE: Set DATABASE_URL directly (postgresql://user:password@host:port/database)
+# 3. LOCAL: Don't set anything - uses SQLite automatically
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# If DATABASE_URL not set, try building from Supabase env vars
 if not DATABASE_URL:
-    # No DATABASE_URL set - use SQLite (local development)
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_password = os.getenv("SUPABASE_DB_PASSWORD")
+    
+    if supabase_url and supabase_password:
+        # Extract project reference from Supabase URL
+        # Format: https://[PROJECT_REF].supabase.co
+        # Or: https://lgbpmgaacqawvfavtdzu.supabase.co
+        try:
+            # Remove https:// and .supabase.co to get project ref
+            project_ref = supabase_url.replace("https://", "").replace(".supabase.co", "")
+            # Build PostgreSQL connection string
+            DATABASE_URL = f"postgresql://postgres:{supabase_password}@db.{project_ref}.supabase.co:5432/postgres"
+            import logging
+            logging.info(f"Built DATABASE_URL from Supabase env vars (project: {project_ref})")
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to build DATABASE_URL from Supabase vars: {e}")
+
+# If still no DATABASE_URL, use SQLite
+if not DATABASE_URL:
     if os.getenv("VERCEL"):
         # On Vercel without DATABASE_URL, use /tmp (but this is unreliable)
         DATABASE_URL = "sqlite:////tmp/emergencycare.db"

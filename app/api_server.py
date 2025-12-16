@@ -1198,9 +1198,21 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     """Login and get access token."""
     try:
-        # CRITICAL: Ensure database is initialized BEFORE any queries
+        # CRITICAL FIX FOR VERCEL: Ensure database is initialized BEFORE any queries
         # On Vercel cold starts, startup event might not run before first request
-        init_db()  # Thread-safe, can be called multiple times
+        # This MUST happen synchronously before any database operations
+        try:
+            init_db()  # Thread-safe, idempotent - safe to call multiple times
+            logging.info("Database initialization check completed")
+        except Exception as init_error:
+            logging.error(f"Database initialization failed: {init_error}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": f"Database initialization failed: {str(init_error)}",
+                    "error_type": type(init_error).__name__
+                }
+            )
         
         # Ensure demo users exist in database (for cold starts on Vercel)
         from app.auth import init_demo_users, SECRET_KEY
@@ -1209,21 +1221,27 @@ async def login(request: LoginRequest):
         db = None
         try:
             db = SessionLocal()
+            # Test database connection by querying user count
             user_count = db.query(UserModel).count()
-            logging.info(f"User count in database: {user_count}")
+            logging.info(f"Database connection successful. User count: {user_count}")
             
             if user_count == 0:
                 try:
                     logging.info("No users found in database, initializing demo users...")
                     init_demo_users()
-                    logging.info("Demo users initialized")
+                    logging.info("Demo users initialized successfully")
                 except Exception as init_error:
                     logging.error(f"Failed to initialize demo users: {init_error}", exc_info=True)
+                    # Don't fail login if demo users fail - user might be registering
         except Exception as db_error:
-            logging.error(f"Database error in login: {db_error}", exc_info=True)
+            logging.error(f"Database query error in login: {db_error}", exc_info=True)
             return JSONResponse(
                 status_code=500,
-                content={"detail": f"Database error: {str(db_error)}", "error_type": type(db_error).__name__}
+                content={
+                    "detail": f"Database query error: {str(db_error)}",
+                    "error_type": type(db_error).__name__,
+                    "hint": "Database might not be initialized. Check /api/debug/auth"
+                }
             )
         finally:
             if db:

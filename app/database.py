@@ -199,8 +199,8 @@ def init_db():
             return
         
         try:
-            # Ensure /tmp directory exists (for Vercel)
-            if os.getenv("VERCEL"):
+            # Ensure /tmp directory exists (for SQLite on Vercel only)
+            if "sqlite" in DATABASE_URL and os.getenv("VERCEL"):
                 os.makedirs("/tmp", exist_ok=True)
             
             # Create all tables
@@ -208,7 +208,16 @@ def init_db():
             _db_initialized = True
             
             import logging
-            logging.info(f"Database initialized successfully at {DATABASE_URL}")
+            db_type = "PostgreSQL" if "postgresql" in DATABASE_URL else "SQLite"
+            logging.info(f"Database ({db_type}) initialized successfully")
+            
+            # Test connection
+            try:
+                with engine.connect() as conn:
+                    conn.execute("SELECT 1")
+                logging.info("Database connection test successful")
+            except Exception as conn_error:
+                logging.warning(f"Database connection test failed: {conn_error}")
         except Exception as e:
             import logging
             logging.error(f"Database initialization error: {e}", exc_info=True)

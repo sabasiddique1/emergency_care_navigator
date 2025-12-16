@@ -1144,16 +1144,22 @@ async def register(request: RegisterRequest):
 async def login(request: LoginRequest):
     """Login and get access token."""
     try:
-        # Ensure demo users exist (for cold starts on Vercel)
-        from app.auth import init_demo_users, load_users, SECRET_KEY
-        users = load_users()
-        if not users:
-            try:
-                logging.info("No users found, initializing demo users...")
-                init_demo_users()
-                logging.info("Demo users initialized")
-            except Exception as init_error:
-                logging.warning(f"Failed to initialize demo users: {init_error}")
+        # Ensure demo users exist in database (for cold starts on Vercel)
+        from app.auth import init_demo_users, SECRET_KEY
+        from app.database import SessionLocal, UserModel
+        
+        db = SessionLocal()
+        try:
+            user_count = db.query(UserModel).count()
+            if user_count == 0:
+                try:
+                    logging.info("No users found in database, initializing demo users...")
+                    init_demo_users()
+                    logging.info("Demo users initialized")
+                except Exception as init_error:
+                    logging.warning(f"Failed to initialize demo users: {init_error}")
+        finally:
+            db.close()
         
         # Verify JWT_SECRET_KEY is set
         if SECRET_KEY == "your-secret-key-change-in-production":

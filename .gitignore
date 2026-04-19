@@ -47,4 +47,4 @@ build/
 # Documentation
 docs/
 
-
+node_modules/

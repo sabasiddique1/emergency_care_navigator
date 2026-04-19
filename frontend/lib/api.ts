@@ -1,40 +1,7 @@
 // API base URL
 // - In development, set NEXT_PUBLIC_API_URL to "http://localhost:8000"
-// - In production (Vercel), leave it unset so it defaults to empty string (same-origin)
+// - In production (Vercel), you can leave it unset so it defaults to same-origin "/api"
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
-// Helper function to build API URLs
-function buildApiUrl(path: string): string {
-  // Remove leading slash from path if present
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  
-  if (API_BASE_URL) {
-    // If API_BASE_URL is set, use it (development)
-    return `${API_BASE_URL}/${cleanPath}`;
-  } else {
-    // In production, use relative path (same-origin)
-    return `/${cleanPath}`;
-  }
-}
-
-// Helper function to build API URLs with query parameters
-function buildApiUrlWithQuery(path: string, params?: Record<string, string>): string {
-  const baseUrl = buildApiUrl(path);
-  if (!params || Object.keys(params).length === 0) {
-    return baseUrl;
-  }
-  
-  // Build query string manually for better compatibility
-  const queryParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value) {
-      queryParams.append(key, value);
-    }
-  });
-  
-  const queryString = queryParams.toString();
-  return queryString ? `${baseUrl}?${queryString}` : baseUrl;
-}
 
 export interface IntakeAnswers {
   name?: string;
@@ -98,9 +65,12 @@ export interface MemoryBank {
 }
 
 export async function processIntake(intake: IntakeAnswers, patientEmail?: string): Promise<Recommendation> {
-  const url = buildApiUrlWithQuery('api/intake', patientEmail ? { patient_email: patientEmail } : undefined);
+  const url = new URL(`${API_BASE_URL}/api/intake`);
+  if (patientEmail) {
+    url.searchParams.append('patient_email', patientEmail);
+  }
   
-  const response = await fetch(url, {
+  const response = await fetch(url.toString(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -123,7 +93,7 @@ export async function getBookingStatus(sessionId: string): Promise<{ session_id:
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(buildApiUrl(`api/booking/status/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/booking/status/${sessionId}`, {
     method: 'GET',
     headers,
   });
@@ -144,7 +114,7 @@ export async function ackAlert(sessionId: string): Promise<BookingState> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(buildApiUrl(`api/booking/ack-alert/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/booking/ack-alert/${sessionId}`, {
     method: 'POST',
     headers,
   });
@@ -166,7 +136,7 @@ export async function approveAppointment(sessionId: string): Promise<BookingStat
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(buildApiUrl(`api/booking/approve-appointment/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/booking/approve-appointment/${sessionId}`, {
     method: 'POST',
     headers,
   });
@@ -189,7 +159,7 @@ export async function approveBooking(sessionId: string): Promise<BookingState> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(buildApiUrl(`api/booking/approve/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/booking/approve/${sessionId}`, {
     method: 'POST',
     headers,
   });
@@ -202,7 +172,7 @@ export async function approveBooking(sessionId: string): Promise<BookingState> {
 }
 
 export async function getHealth(): Promise<{ status: string; service: string }> {
-  const response = await fetch(buildApiUrl('api/health'));
+  const response = await fetch(`${API_BASE_URL}/api/health`);
   if (!response.ok) {
     throw new Error('Health check failed');
   }
@@ -216,7 +186,7 @@ export async function getMemory(): Promise<MemoryBank> {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const response = await fetch(buildApiUrl('api/memory'), {
+  const response = await fetch(`${API_BASE_URL}/api/memory`, {
     headers,
   });
   if (!response.ok) {
@@ -226,7 +196,7 @@ export async function getMemory(): Promise<MemoryBank> {
 }
 
 export async function updateMemory(memory: MemoryBank): Promise<{ status: string; memory: MemoryBank }> {
-  const response = await fetch(buildApiUrl('api/memory'), {
+  const response = await fetch(`${API_BASE_URL}/api/memory`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -241,7 +211,7 @@ export async function updateMemory(memory: MemoryBank): Promise<{ status: string
 }
 
 export async function addHealthCondition(condition: string): Promise<{ status: string; memory: MemoryBank }> {
-  const response = await fetch(buildApiUrl('api/memory/health-conditions'), {
+  const response = await fetch(`${API_BASE_URL}/api/memory/health-conditions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -256,7 +226,7 @@ export async function addHealthCondition(condition: string): Promise<{ status: s
 }
 
 export async function removeHealthCondition(condition: string): Promise<{ status: string; memory: MemoryBank }> {
-  const response = await fetch(buildApiUrl(`api/memory/health-conditions/${encodeURIComponent(condition)}`), {
+  const response = await fetch(`${API_BASE_URL}/api/memory/health-conditions/${encodeURIComponent(condition)}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -277,7 +247,7 @@ export async function uploadDocument(file: File): Promise<DocumentUploadResponse
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(buildApiUrl('api/documents/upload'), {
+  const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -351,7 +321,7 @@ export function setStoredUser(user: User): void {
 }
 
 export async function login(credentials: LoginRequest): Promise<AuthResponse> {
-  const response = await fetch(buildApiUrl('api/auth/login'), {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -371,7 +341,7 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
 }
 
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
-  const response = await fetch(buildApiUrl('api/auth/register'), {
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -396,7 +366,7 @@ export async function getCurrentUser(): Promise<User> {
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch(buildApiUrl('api/auth/me'), {
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -443,7 +413,10 @@ export interface PendingRequestsResponse {
 }
 
 export async function getPatientRequests(patientEmail?: string): Promise<PatientRequest[]> {
-  const url = buildApiUrlWithQuery('api/patient/requests', patientEmail ? { patient_email: patientEmail } : undefined);
+  const url = new URL(`${API_BASE_URL}/api/patient/requests`);
+  if (patientEmail) {
+    url.searchParams.append('patient_email', patientEmail);
+  }
   
   const token = getAuthToken();
   const headers: HeadersInit = {};
@@ -451,7 +424,7 @@ export async function getPatientRequests(patientEmail?: string): Promise<Patient
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const response = await fetch(url, {
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers,
   });
@@ -464,7 +437,10 @@ export async function getPatientRequests(patientEmail?: string): Promise<Patient
 }
 
 export async function getPendingRequests(patientEmail?: string): Promise<PendingRequestsResponse> {
-  const url = buildApiUrlWithQuery('api/patient/requests/pending', patientEmail ? { patient_email: patientEmail } : undefined);
+  const url = new URL(`${API_BASE_URL}/api/patient/requests/pending`);
+  if (patientEmail) {
+    url.searchParams.append('patient_email', patientEmail);
+  }
   
   const token = getAuthToken();
   const headers: HeadersInit = {};
@@ -472,7 +448,7 @@ export async function getPendingRequests(patientEmail?: string): Promise<Pending
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const response = await fetch(url, {
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers,
   });
@@ -512,7 +488,7 @@ export async function getSessionDetails(sessionId: string): Promise<SessionDetai
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const response = await fetch(buildApiUrl(`api/sessions/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, {
     method: 'GET',
     headers,
   });
@@ -525,7 +501,10 @@ export async function getSessionDetails(sessionId: string): Promise<SessionDetai
 }
 
 export async function getPatientSessions(patientEmail?: string): Promise<PatientSession[]> {
-  const url = buildApiUrlWithQuery('api/sessions', patientEmail ? { patient_email: patientEmail } : undefined);
+  const url = new URL(`${API_BASE_URL}/api/sessions`);
+  if (patientEmail) {
+    url.searchParams.append('patient_email', patientEmail);
+  }
   
   const token = getAuthToken();
   const headers: HeadersInit = {};
@@ -533,7 +512,7 @@ export async function getPatientSessions(patientEmail?: string): Promise<Patient
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  const response = await fetch(url, {
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers,
   });
@@ -587,7 +566,7 @@ export interface HospitalFacility {
 }
 
 export async function getHospitalFacilities(): Promise<HospitalFacility[]> {
-  const response = await fetch(buildApiUrl('api/hospital/facilities'));
+  const response = await fetch(`${API_BASE_URL}/api/hospital/facilities`);
   if (!response.ok) {
     throw new Error('Failed to get hospital facilities');
   }
@@ -595,8 +574,11 @@ export async function getHospitalFacilities(): Promise<HospitalFacility[]> {
 }
 
 export async function getHospitalBookings(facilityName: string, status?: string): Promise<HospitalBooking[]> {
-  const url = buildApiUrlWithQuery(`api/hospital/bookings/${encodeURIComponent(facilityName)}`, status ? { status } : undefined);
-  const response = await fetch(url);
+  const url = new URL(`${API_BASE_URL}/api/hospital/bookings/${encodeURIComponent(facilityName)}`);
+  if (status) {
+    url.searchParams.append('status', status);
+  }
+  const response = await fetch(url.toString());
   if (!response.ok) {
     throw new Error('Failed to get hospital bookings');
   }
@@ -604,7 +586,7 @@ export async function getHospitalBookings(facilityName: string, status?: string)
 }
 
 export async function rejectBooking(sessionId: string, reason?: string): Promise<{ status: string; session_id: string; reason?: string }> {
-  const response = await fetch(buildApiUrl(`api/booking/reject/${sessionId}`), {
+  const response = await fetch(`${API_BASE_URL}/api/booking/reject/${sessionId}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
